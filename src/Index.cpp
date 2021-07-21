@@ -132,7 +132,6 @@ U64 Board::toIndex(const Board& board) {
 	// 1-x means the piece is on a square as given by bbp0c/bbp1c
 	// we can achieve a reduction of 4!, we don't care about the permutation of the 4 pawns.
 	// our algorithm to achieve this depends on p0 < p1 < p2 < p3, where 0 is treated as the largest number.
-	
 	U64 ip0p0, ip0p1, ip0p2, ip0p3, ip1p0, ip1p1, ip1p2, ip1p3;
 	if (!invert) {
 		ip0p0 = _tzcnt_u64(bbpc0) & 63; // when not found, it will return 64 which is cut off by the & operation
@@ -201,36 +200,36 @@ Board Board::fromIndex(U64 index) {
 
 	FromIndexHalfReturn bbStuff;
 	if (0);
-#if TB_MEN > 7
-#if TB_MEN > 9
+#if TB_MEN >= 8
+#if TB_MEN >= 10
 	else if (index < MAX_INDEX[4][4]) bbStuff = fromIndexHelper<invert, 4, 4>(index);
 	else if (index < MAX_INDEX[4][3]) bbStuff = fromIndexHelper<invert, 4, 3>(index);
 	else if (index < MAX_INDEX[3][4]) bbStuff = fromIndexHelper<invert, 3, 4>(index);
 #endif
 	else if (index < MAX_INDEX[3][3]) bbStuff = fromIndexHelper<invert, 3, 3>(index);
-#if TB_MEN > 9
+#if TB_MEN >= 10
 	else if (index < MAX_INDEX[4][2]) bbStuff = fromIndexHelper<invert, 4, 2>(index);
 	else if (index < MAX_INDEX[2][4]) bbStuff = fromIndexHelper<invert, 2, 4>(index);
 #endif
 	else if (index < MAX_INDEX[3][2]) bbStuff = fromIndexHelper<invert, 3, 2>(index);
 	else if (index < MAX_INDEX[2][3]) bbStuff = fromIndexHelper<invert, 2, 3>(index);
-#if TB_MEN > 9
+#if TB_MEN >= 10
 	else if (index < MAX_INDEX[4][1]) bbStuff = fromIndexHelper<invert, 4, 1>(index);
 	else if (index < MAX_INDEX[1][4]) bbStuff = fromIndexHelper<invert, 1, 4>(index);
 #endif
 #endif
 	else if (index < MAX_INDEX[2][2]) bbStuff = fromIndexHelper<invert, 2, 2>(index);
-#if TB_MEN > 7
+#if TB_MEN >= 8
 	else if (index < MAX_INDEX[3][1]) bbStuff = fromIndexHelper<invert, 3, 1>(index);
 	else if (index < MAX_INDEX[1][3]) bbStuff = fromIndexHelper<invert, 1, 3>(index);
-#if TB_MEN > 9
+#if TB_MEN >= 10
 	else if (index < MAX_INDEX[4][0]) bbStuff = fromIndexHelper<invert, 4, 0>(index);
 	else if (index < MAX_INDEX[0][4]) bbStuff = fromIndexHelper<invert, 0, 4>(index);
 #endif
 #endif
 	else if (index < MAX_INDEX[2][1]) bbStuff = fromIndexHelper<invert, 2, 1>(index);
 	else if (index < MAX_INDEX[1][2]) bbStuff = fromIndexHelper<invert, 1, 2>(index);
-#if TB_MEN > 7
+#if TB_MEN >= 8
 	else if (index < MAX_INDEX[3][0]) bbStuff = fromIndexHelper<invert, 3, 0>(index);
 	else if (index < MAX_INDEX[0][3]) bbStuff = fromIndexHelper<invert, 0, 3>(index);
 #endif
