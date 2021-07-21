@@ -10,7 +10,7 @@
 #include <xmmintrin.h>
 #include <iostream>
 
-#define TB_MEN 6
+#define TB_MEN 10
 
 constexpr U64 KINGSMULT = 24 + 23*23;
 
@@ -57,6 +57,7 @@ constexpr auto OFFSETS_SUB_EMPTY = [](){
 		for (int p1c = 0; p1c < TB_MEN/2; p1c++) {
 			U64 offset = OFFSETS[p0c][p1c];
 
+			// when not all pieces are on the board, lzcnt/tzcnt return 64. We offset this in the compile-time tables.
 			if (p0c < 4) offset -= KINGSMULT * 64 * 63 * 62 * 61 / 24;
 			if (p0c < 3) offset -= KINGSMULT * 64 * 63 * 62 / 6;
 			if (p0c < 2) offset -= KINGSMULT * 64 * 63 / 2;
@@ -274,12 +275,20 @@ Board Board::fromIndex(U64 index) {
 	// 	.bbk0 = bbk0,
 	// 	.bbk1 = bbk1,
 	// }) << std::endl;
-	assert(index == Board::toIndex<invert>({
+	if(index != Board::toIndex<invert>({
 		.bbp0 = bbp0,
 		.bbp1 = bbp1,
 		.bbk0 = bbk0,
 		.bbk1 = bbk1,
-	}));
+	})) {
+		std::cout << index << std::endl;
+		assert(index == Board::toIndex<invert>({
+			.bbp0 = bbp0,
+			.bbp1 = bbp1,
+			.bbk0 = bbk0,
+			.bbk1 = bbk1,
+		}));
+	}
 
 	return {
 		.bbp0 = bbp0,
@@ -297,7 +306,7 @@ void testIndexing() {
 	std::cout << TB_SIZE << std::endl;
 	for (U64 i = 0; i < TB_SIZE; i++) {
 		// std::cout << i << " " << Board::toIndex<false>(Board::fromIndex<false>(i)) << std::endl;
-		if (i % 10000000 == 0)
+		if (i % 100000000 == 0)
 			std::cout << i << std::endl;
 		Board::fromIndex<false>(i);
 		// assert(i == Board::toIndex<false>(Board::fromIndex<false>(i)));
