@@ -10,7 +10,7 @@
 #include <xmmintrin.h>
 #include <iostream>
 
-#define TB_MEN 10
+#define TB_MEN 6
 
 constexpr U64 KINGSMULT = 24 + 23*23;
 
@@ -57,15 +57,15 @@ constexpr auto OFFSETS_SUB_EMPTY = [](){
 		for (int p1c = 0; p1c < TB_MEN/2; p1c++) {
 			U64 offset = OFFSETS[p0c][p1c];
 
-			if (p0c < 4) offset -= 64 * 63 * 62 * 61 / 24;
-			if (p0c < 3) offset -= 64 * 63 * 62 / 6;
-			if (p0c < 2) offset -= 64 * 63 / 2;
-			if (p0c < 1) offset -= 64;
+			if (p0c < 4) offset -= KINGSMULT * 64 * 63 * 62 * 61 / 24;
+			if (p0c < 3) offset -= KINGSMULT * 64 * 63 * 62 / 6;
+			if (p0c < 2) offset -= KINGSMULT * 64 * 63 / 2;
+			if (p0c < 1) offset -= KINGSMULT * 64;
 
-			if (p1c < 4) offset -= 64 * 63 * 62 * 61 / 24;
-			if (p1c < 3) offset -= 64 * 63 * 62 / 6;
-			if (p1c < 2) offset -= 64 * 63 / 2;
-			if (p1c < 1) offset -= 64;
+			if (p1c < 4) offset -= KINGSMULT * PIECES0MULT[p0c] * 64 * 63 * 62 * 61 / 24;
+			if (p1c < 3) offset -= KINGSMULT * PIECES0MULT[p0c] * 64 * 63 * 62 / 6;
+			if (p1c < 2) offset -= KINGSMULT * PIECES0MULT[p0c] * 64 * 63 / 2;
+			if (p1c < 1) offset -= KINGSMULT * PIECES0MULT[p0c] * 64;
 
 			a[p0c][p1c] = offset;
 		}
