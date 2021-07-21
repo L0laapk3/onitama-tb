@@ -10,7 +10,7 @@
 #include <xmmintrin.h>
 #include <iostream>
 
-#define TB_MEN 10
+#define TB_MEN 6
 
 constexpr U64 KINGSMULT = 24 + 23*23;
 
@@ -36,17 +36,20 @@ constexpr auto OFFSET_ORDER = []() {
 	// 		a[index++] = { p0c, p1c };
     return a;
 }();
+template<bool includeSelf>
 constexpr auto GENERATE_TABLE_SIZES() {
 	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a;
     U64 offset_cumul = 0;
 	for (auto& pc : OFFSET_ORDER) {
-        a[pc.first][pc.second] = offset_cumul;
+		if (!includeSelf) a[pc.first][pc.second] = offset_cumul;
         offset_cumul += KINGSMULT * (fact(23, 23-pc.first) / fact(pc.first)) * (fact(23-pc.first, 23-pc.first-pc.second) / fact(pc.second));
+		if (includeSelf) a[pc.first][pc.second] = offset_cumul;
     }
 	return std::pair{ a, offset_cumul };
 }
-constexpr auto OFFSETS = GENERATE_TABLE_SIZES().first;
-constexpr U64 TB_SIZE = GENERATE_TABLE_SIZES().second;
+constexpr auto OFFSETS = GENERATE_TABLE_SIZES<false>().first;
+constexpr auto MAX_INDEX = GENERATE_TABLE_SIZES<true>().first;
+constexpr U64 TB_SIZE = GENERATE_TABLE_SIZES<false>().second;
 
 constexpr auto TABLE_TWOKINGS = [](){
 	std::array<U32, 25*25> a;
@@ -143,12 +146,12 @@ U64 Board::toIndex(const Board& board) {
 		ip1p3 = _tzcnt_u64(bbpc1 &= bbpc1-1) & 63;
 	} else {
 		bbpc0 <<= 39;
-		bbpc1 <<= 39;
 		ip0p0 = _lzcnt_u64(bbpc0) & 63;
 		ip0p1 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p0)) & 63;
 		ip0p2 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p1)) & 63;
 		ip0p3 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p2)) & 63;
 
+		bbpc1 <<= 39;
 		ip1p0 = _lzcnt_u64(bbpc1) & 63;
 		ip1p1 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p0)) & 63;
 		ip1p2 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p1)) & 63;
@@ -180,6 +183,7 @@ struct FromIndexHalfReturn {
 };
 template <bool invert, int p0c, int p1c>
 FromIndexHalfReturn fromIndexHelper(U64 index) {
+	index -= OFFSETS[p0c][p1c];
 	constexpr U64 p0mult = PIECES0MULT[p0c];
 	U64 ik = index % KINGSMULT;
 	index /= KINGSMULT;
@@ -196,31 +200,46 @@ template <bool invert>
 Board Board::fromIndex(U64 index) {
 
 	FromIndexHalfReturn bbStuff;
-	if      (index < OFFSETS[4][3]) bbStuff = fromIndexHelper<invert, 4, 4>(index - OFFSETS[4][4]);
-	else if (index < OFFSETS[3][4]) bbStuff = fromIndexHelper<invert, 4, 3>(index - OFFSETS[4][3]);
-	else if (index < OFFSETS[3][3]) bbStuff = fromIndexHelper<invert, 3, 4>(index - OFFSETS[3][4]);
-	else if (index < OFFSETS[4][2]) bbStuff = fromIndexHelper<invert, 3, 3>(index - OFFSETS[3][3]);
-	else if (index < OFFSETS[2][4]) bbStuff = fromIndexHelper<invert, 4, 2>(index - OFFSETS[4][2]);
-	else if (index < OFFSETS[3][2]) bbStuff = fromIndexHelper<invert, 2, 4>(index - OFFSETS[2][4]);
-	else if (index < OFFSETS[2][3]) bbStuff = fromIndexHelper<invert, 3, 2>(index - OFFSETS[3][2]);
-	else if (index < OFFSETS[4][1]) bbStuff = fromIndexHelper<invert, 2, 3>(index - OFFSETS[2][3]);
-	else if (index < OFFSETS[1][4]) bbStuff = fromIndexHelper<invert, 4, 1>(index - OFFSETS[4][1]);
-	else if (index < OFFSETS[2][2]) bbStuff = fromIndexHelper<invert, 1, 4>(index - OFFSETS[1][4]);
-	else if (index < OFFSETS[3][1]) bbStuff = fromIndexHelper<invert, 2, 2>(index - OFFSETS[2][2]);
-	else if (index < OFFSETS[1][3]) bbStuff = fromIndexHelper<invert, 3, 1>(index - OFFSETS[3][1]);
-	else if (index < OFFSETS[4][0]) bbStuff = fromIndexHelper<invert, 1, 3>(index - OFFSETS[1][3]);
-	else if (index < OFFSETS[0][4]) bbStuff = fromIndexHelper<invert, 4, 0>(index - OFFSETS[4][0]);
-	else if (index < OFFSETS[2][1]) bbStuff = fromIndexHelper<invert, 0, 4>(index - OFFSETS[0][4]);
-	else if (index < OFFSETS[1][2]) bbStuff = fromIndexHelper<invert, 2, 1>(index - OFFSETS[2][1]);
-	else if (index < OFFSETS[3][0]) bbStuff = fromIndexHelper<invert, 1, 2>(index - OFFSETS[1][2]);
-	else if (index < OFFSETS[0][3]) bbStuff = fromIndexHelper<invert, 3, 0>(index - OFFSETS[3][0]);
-	else if (index < OFFSETS[1][1]) bbStuff = fromIndexHelper<invert, 0, 3>(index - OFFSETS[0][3]);
-	else if (index < OFFSETS[2][0]) bbStuff = fromIndexHelper<invert, 1, 1>(index - OFFSETS[1][1]);
-	else if (index < OFFSETS[0][2]) bbStuff = fromIndexHelper<invert, 2, 0>(index - OFFSETS[2][0]);
-	else if (index < OFFSETS[1][0]) bbStuff = fromIndexHelper<invert, 0, 2>(index - OFFSETS[0][2]);
-	else if (index < OFFSETS[0][1]) bbStuff = fromIndexHelper<invert, 1, 0>(index - OFFSETS[1][0]);
-	else if (index < OFFSETS[0][0]) bbStuff = fromIndexHelper<invert, 0, 1>(index - OFFSETS[0][1]);
-	else                            bbStuff = fromIndexHelper<invert, 0, 0>(index - OFFSETS[0][0]);
+	if (0);
+#if TB_MEN > 7
+#if TB_MEN > 9
+	else if (index < MAX_INDEX[4][4]) bbStuff = fromIndexHelper<invert, 4, 4>(index);
+	else if (index < MAX_INDEX[4][3]) bbStuff = fromIndexHelper<invert, 4, 3>(index);
+	else if (index < MAX_INDEX[3][4]) bbStuff = fromIndexHelper<invert, 3, 4>(index);
+#endif
+	else if (index < MAX_INDEX[3][3]) bbStuff = fromIndexHelper<invert, 3, 3>(index);
+#if TB_MEN > 9
+	else if (index < MAX_INDEX[4][2]) bbStuff = fromIndexHelper<invert, 4, 2>(index);
+	else if (index < MAX_INDEX[2][4]) bbStuff = fromIndexHelper<invert, 2, 4>(index);
+#endif
+	else if (index < MAX_INDEX[3][2]) bbStuff = fromIndexHelper<invert, 3, 2>(index);
+	else if (index < MAX_INDEX[2][3]) bbStuff = fromIndexHelper<invert, 2, 3>(index);
+#if TB_MEN > 9
+	else if (index < MAX_INDEX[4][1]) bbStuff = fromIndexHelper<invert, 4, 1>(index);
+	else if (index < MAX_INDEX[1][4]) bbStuff = fromIndexHelper<invert, 1, 4>(index);
+#endif
+#endif
+	else if (index < MAX_INDEX[2][2]) bbStuff = fromIndexHelper<invert, 2, 2>(index);
+#if TB_MEN > 7
+	else if (index < MAX_INDEX[3][1]) bbStuff = fromIndexHelper<invert, 3, 1>(index);
+	else if (index < MAX_INDEX[1][3]) bbStuff = fromIndexHelper<invert, 1, 3>(index);
+#if TB_MEN > 9
+	else if (index < MAX_INDEX[4][0]) bbStuff = fromIndexHelper<invert, 4, 0>(index);
+	else if (index < MAX_INDEX[0][4]) bbStuff = fromIndexHelper<invert, 0, 4>(index);
+#endif
+#endif
+	else if (index < MAX_INDEX[2][1]) bbStuff = fromIndexHelper<invert, 2, 1>(index);
+	else if (index < MAX_INDEX[1][2]) bbStuff = fromIndexHelper<invert, 1, 2>(index);
+#if TB_MEN > 7
+	else if (index < MAX_INDEX[3][0]) bbStuff = fromIndexHelper<invert, 3, 0>(index);
+	else if (index < MAX_INDEX[0][3]) bbStuff = fromIndexHelper<invert, 0, 3>(index);
+#endif
+	else if (index < MAX_INDEX[1][1]) bbStuff = fromIndexHelper<invert, 1, 1>(index);
+	else if (index < MAX_INDEX[2][0]) bbStuff = fromIndexHelper<invert, 2, 0>(index);
+	else if (index < MAX_INDEX[0][2]) bbStuff = fromIndexHelper<invert, 0, 2>(index);
+	else if (index < MAX_INDEX[1][0]) bbStuff = fromIndexHelper<invert, 1, 0>(index);
+	else if (index < MAX_INDEX[0][1]) bbStuff = fromIndexHelper<invert, 0, 1>(index);
+	else                              bbStuff = fromIndexHelper<invert, 0, 0>(index);
 
 	U64 bbk0, bbk1;
 	std::tie(bbk0, bbk1) = TABLE_BBKINGS[bbStuff.ik];
