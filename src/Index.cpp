@@ -10,7 +10,7 @@
 #include <xmmintrin.h>
 #include <iostream>
 
-#define TB_MEN 6
+#define TB_MEN 10
 
 constexpr U64 KINGSMULT = 24 + 23*23;
 
@@ -51,6 +51,28 @@ constexpr auto OFFSETS = GENERATE_TABLE_SIZES<false>().first;
 constexpr auto MAX_INDEX = GENERATE_TABLE_SIZES<true>().first;
 constexpr U64 TB_SIZE = GENERATE_TABLE_SIZES<false>().second;
 
+constexpr auto OFFSETS_SUB_EMPTY = [](){
+	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a;
+	for (int p0c = 0; p0c < TB_MEN/2; p0c++) {
+		for (int p1c = 0; p1c < TB_MEN/2; p1c++) {
+			U64 offset = OFFSETS[p0c][p1c];
+
+			if (p0c < 4) offset -= 64 * 63 * 62 * 61 / 24;
+			if (p0c < 3) offset -= 64 * 63 * 62 / 6;
+			if (p0c < 2) offset -= 64 * 63 / 2;
+			if (p0c < 1) offset -= 64;
+
+			if (p1c < 4) offset -= 64 * 63 * 62 * 61 / 24;
+			if (p1c < 3) offset -= 64 * 63 * 62 / 6;
+			if (p1c < 2) offset -= 64 * 63 / 2;
+			if (p1c < 1) offset -= 64;
+
+			a[p0c][p1c] = offset;
+		}
+	}
+	return a;
+}();
+
 constexpr auto TABLE_TWOKINGS = [](){
 	std::array<U32, 25*25> a;
 	U32 i = 0;
@@ -74,9 +96,9 @@ constexpr auto TABLE_BBKINGS = [](){
 template<int size>
 constexpr void GENERATE_PAWN_TABLE_PAWN(U32 bb, int remaining, std::array<U32, size>& a, std::array<U32, 4> p, U32 index) {
 	if (remaining <= 0) {
-		U64 rp = p[3] * (p[3] - 1) * (p[3] - 2) * (p[3] - 3);
-		rp    += p[2] * (p[2] - 1) * (p[2] - 2) * 4;
-		rp    += p[1] * (p[1] - 1) * 12;
+		U64 rp = p[3] * (p[3]-1) * (p[3]-2) * (p[3]-3);
+		rp    += p[2] * (p[2]-1) * (p[2]-2) * 4;
+		rp    += p[1] * (p[1]-1) * 12;
 		a[rp / 24 + p[0]] = bb;
 	} else
 		for (p[index] = 0; p[index] < 23; p[index]++) {
@@ -126,7 +148,7 @@ U64 Board::toIndex(const Board& board) {
 	
 	U64 pp0cnt = _popcnt64(bbpp0);
 	U64 pp1cnt = _popcnt64(bbpp1);
-	U64 offset = OFFSETS[pp0cnt][pp1cnt];
+	U64 offset = OFFSETS_SUB_EMPTY[pp0cnt][pp1cnt];
 
 	// 0 means the piece has been taken and is not on the board
 	// 1-x means the piece is on a square as given by bbp0c/bbp1c
@@ -134,27 +156,27 @@ U64 Board::toIndex(const Board& board) {
 	// our algorithm to achieve this depends on p0 < p1 < p2 < p3, where 0 is treated as the largest number.
 	U64 ip0p0, ip0p1, ip0p2, ip0p3, ip1p0, ip1p1, ip1p2, ip1p3;
 	if (!invert) {
-		ip0p0 = _tzcnt_u64(bbpc0) & 63; // when not found, it will return 64 which is cut off by the & operation
-		ip0p1 = _tzcnt_u64(bbpc0 &= bbpc0-1) & 63;
-		ip0p2 = _tzcnt_u64(bbpc0 &= bbpc0-1) & 63;
-		ip0p3 = _tzcnt_u64(bbpc0 &= bbpc0-1) & 63;
+		ip0p0 = _tzcnt_u64(bbpc0); // when not found, it will return 64 which is cut off by the & operation
+		ip0p1 = _tzcnt_u64(bbpc0 &= bbpc0-1);
+		ip0p2 = _tzcnt_u64(bbpc0 &= bbpc0-1);
+		ip0p3 = _tzcnt_u64(bbpc0 &= bbpc0-1);
 
-		ip1p0 = _tzcnt_u64(bbpc1) & 63;
-		ip1p1 = _tzcnt_u64(bbpc1 &= bbpc1-1) & 63;
-		ip1p2 = _tzcnt_u64(bbpc1 &= bbpc1-1) & 63;
-		ip1p3 = _tzcnt_u64(bbpc1 &= bbpc1-1) & 63;
+		ip1p0 = _tzcnt_u64(bbpc1);
+		ip1p1 = _tzcnt_u64(bbpc1 &= bbpc1-1);
+		ip1p2 = _tzcnt_u64(bbpc1 &= bbpc1-1);
+		ip1p3 = _tzcnt_u64(bbpc1 &= bbpc1-1);
 	} else {
 		bbpc0 <<= 39;
-		ip0p0 = _lzcnt_u64(bbpc0) & 63;
-		ip0p1 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p0)) & 63;
-		ip0p2 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p1)) & 63;
-		ip0p3 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p2)) & 63;
+		ip0p0 = _lzcnt_u64(bbpc0);
+		ip0p1 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p0));
+		ip0p2 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p1));
+		ip0p3 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p2));
 
 		bbpc1 <<= 39;
-		ip1p0 = _lzcnt_u64(bbpc1) & 63;
-		ip1p1 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p0)) & 63;
-		ip1p2 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p1)) & 63;
-		ip1p3 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p2)) & 63;
+		ip1p0 = _lzcnt_u64(bbpc1);
+		ip1p1 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p0));
+		ip1p2 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p1));
+		ip1p3 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p2));
 	}
 
 	U64 rp1 = ip1p3 * (ip1p3-1) * (ip1p3-2) * (ip1p3-3);
