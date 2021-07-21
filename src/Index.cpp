@@ -3,7 +3,12 @@
 #include "Helper.h"
 
 #include <array>
+#include <tuple>
 #include <utility>
+#include <cassert>
+#include "x86intrin.h"
+#include <xmmintrin.h>
+#include <iostream>
 
 #define TB_MEN 10
 
@@ -61,13 +66,31 @@ constexpr auto TABLE_BBKINGS = [](){
 	return a;
 }();
 
+
+
+template<int size>
+constexpr void GENERATE_PAWN_TABLE_PAWN(U32 bb, int remaining, std::array<U32, size>& a, std::array<U32, 4> p, U32 index) {
+	if (remaining <= 0) {
+		U64 rp = p[3] * (p[3] - 1) * (p[3] - 2) * (p[3] - 3);
+		rp    += p[2] * (p[2] - 1) * (p[2] - 2) * 4;
+		rp    += p[1] * (p[1] - 1) * 12;
+		a[rp / 24 + p[0]] = bb;
+	} else
+		for (p[index] = 0; p[index] < 23; p[index]++) {
+			U64 bbp = 1 << p[index];
+			if (bbp > bb)
+				GENERATE_PAWN_TABLE_PAWN<size>(bbp | bb, remaining - 1, a, p, index + 1);
+		}
+}
 template<int pawns>
 constexpr auto GENERATE_PAWN_TABLE() {
 	const U64 size = fact(23, 23-pawns) / fact(pawns);
-	std::array<U32, size> a{};
+	std::array<U32, size> a;
+	GENERATE_PAWN_TABLE_PAWN<size>(0, pawns, a, { 0 }, 0);
     return a;
 };
 
+constexpr auto TABLE_ZEROPAWNS = GENERATE_PAWN_TABLE<0>();
 constexpr auto TABLE_ONEPAWN = GENERATE_PAWN_TABLE<1>();
 constexpr auto TABLE_TWOPAWNS = GENERATE_PAWN_TABLE<2>();
 #if TB_MEN >= 8
@@ -75,6 +98,13 @@ constexpr auto TABLE_TWOPAWNS = GENERATE_PAWN_TABLE<2>();
 #endif
 #if TB_MEN >= 10
 	constexpr auto TABLE_FOURPAWNS = GENERATE_PAWN_TABLE<4>();
+#endif
+#if TB_MEN == 6
+	constexpr std::array<const U32*, 3> PAWNTABLE_POINTERS = { &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0] };
+#elif TB_MEN == 8
+	constexpr std::array<const U32*, 4> PAWNTABLE_POINTERS = { &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0] };
+#else
+	constexpr std::array<const U32*, 5> PAWNTABLE_POINTERS = { &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0], &TABLE_FOURPAWNS[0] };
 #endif
 
 
@@ -89,7 +119,7 @@ U64 Board::toIndex(const Board& board) {
 	U64 bbpp1 = board.bbp1 - board.bbk1;
 	
 	U64 bbpc0 = _pext_u64(bbpp0, ~board.bbk0 & ~board.bbp1); // P0 pawns skip over P0 king and P1 pawns
-	U64 bbpc1 = _pext_u64(bbpp0, ~board.bbk0 & ~board.bbk1); // P1 pawns skip over kings
+	U64 bbpc1 = _pext_u64(bbpp1, ~board.bbk0 & ~board.bbk1); // P1 pawns skip over kings
 	
 	U64 pp0cnt = _popcnt64(bbpp0);
 	U64 pp1cnt = _popcnt64(bbpp1);
@@ -99,30 +129,30 @@ U64 Board::toIndex(const Board& board) {
 	// 1-x means the piece is on a square as given by bbp0c/bbp1c
 	// we can achieve a reduction of 4!, we don't care about the permutation of the 4 pawns.
 	// our algorithm to achieve this depends on p0 < p1 < p2 < p3, where 0 is treated as the largest number.
-	bbpc0 <<= !invert ? 1 : 38;
-	bbpc1 <<= !invert ? 1 : 38;
 	
 	U64 ip0p0, ip0p1, ip0p2, ip0p3, ip1p0, ip1p1, ip1p2, ip1p3;
 	if (!invert) {
-		ip0p0 = _tzcnt_u64(bbpc0) & 31; // when not found, it will return 64 which is cut off by the & operation
-		ip0p1 = _tzcnt_u64(bbpc0 &= bbpc0-1) & 31;
-		ip0p2 = _tzcnt_u64(bbpc0 &= bbpc0-1) & 31;
-		ip0p3 = _tzcnt_u64(bbpc0 &= bbpc0-1) & 31;
+		ip0p0 = _tzcnt_u64(bbpc0) & 63; // when not found, it will return 64 which is cut off by the & operation
+		ip0p1 = _tzcnt_u64(bbpc0 &= bbpc0-1) & 63;
+		ip0p2 = _tzcnt_u64(bbpc0 &= bbpc0-1) & 63;
+		ip0p3 = _tzcnt_u64(bbpc0 &= bbpc0-1) & 63;
 
-		ip1p0 = _tzcnt_u64(bbpc1) & 31;
-		ip1p1 = _tzcnt_u64(bbpc1 &= bbpc1-1) & 31;
-		ip1p2 = _tzcnt_u64(bbpc1 &= bbpc1-1) & 31;
-		ip1p3 = _tzcnt_u64(bbpc1 &= bbpc1-1) & 31;
+		ip1p0 = _tzcnt_u64(bbpc1) & 63;
+		ip1p1 = _tzcnt_u64(bbpc1 &= bbpc1-1) & 63;
+		ip1p2 = _tzcnt_u64(bbpc1 &= bbpc1-1) & 63;
+		ip1p3 = _tzcnt_u64(bbpc1 &= bbpc1-1) & 63;
 	} else {
-		ip0p0 = _lzcnt_u64(bbpc0) & 31;
-		ip0p1 = _lzcnt_u64(bbpc0 -= bbpc0 & -bbpc0) & 31;
-		ip0p2 = _lzcnt_u64(bbpc0 -= bbpc0 & -bbpc0) & 31;
-		ip0p3 = _lzcnt_u64(bbpc0 -= bbpc0 & -bbpc0) & 31;
-		
-		ip1p0 = _lzcnt_u64(bbpc1) & 31;
-		ip1p1 = _lzcnt_u64(bbpc1 -= bbpc1 & -bbpc1) & 31;
-		ip1p2 = _lzcnt_u64(bbpc1 -= bbpc1 & -bbpc1) & 31;
-		ip1p3 = _lzcnt_u64(bbpc1 -= bbpc1 & -bbpc1) & 31;
+		bbpc0 <<= 39;
+		bbpc1 <<= 39;
+		ip0p0 = _lzcnt_u64(bbpc0) & 63;
+		ip0p1 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p0)) & 63;
+		ip0p2 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p1)) & 63;
+		ip0p3 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p2)) & 63;
+
+		ip1p0 = _lzcnt_u64(bbpc1) & 63;
+		ip1p1 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p0)) & 63;
+		ip1p2 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p1)) & 63;
+		ip1p3 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p2)) & 63;
 	}
 
 	U64 rp1 = ip1p3 * (ip1p3-1) * (ip1p3-2) * (ip1p3-3);
@@ -143,7 +173,6 @@ U64 Board::toIndex(const Board& board) {
 
 
 
-constexpr std::array<const U32*, 4> PAWNTABLE_POINTERS = { &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0], &TABLE_FOURPAWNS[0] };
 struct FromIndexHalfReturn {
 	U64 ik;
 	U64 bbpc0;
@@ -151,15 +180,15 @@ struct FromIndexHalfReturn {
 };
 template <bool invert, int p0c, int p1c>
 FromIndexHalfReturn fromIndexHelper(U64 index) {
-	constexpr p0mult = PIECES0MULT[p0c];
-	U64 ik = index % (KINGSMULT * p0mult);
-	index /= KINGSMULT * p0mult;
+	constexpr U64 p0mult = PIECES0MULT[p0c];
+	U64 ik = index % KINGSMULT;
+	index /= KINGSMULT;
 	U64 ip0 = index % p0mult;
-	index /= ip0;
+	index /= p0mult;
 	return {
 		.ik = ik,
 		.bbpc0 = *(PAWNTABLE_POINTERS[p0c] + ip0),
-		.bbpc1 = *(PAWNTABLE_POINTERS[p1c] + ip1),
+		.bbpc1 = *(PAWNTABLE_POINTERS[p1c] + index),
 	};
 }
 
@@ -167,7 +196,7 @@ template <bool invert>
 Board Board::fromIndex(U64 index) {
 
 	FromIndexHalfReturn bbStuff;
-	if      (index < OFFSETS[4][3]) bbStuff = fromIndexHelper<invert, 4, 4>(index                );
+	if      (index < OFFSETS[4][3]) bbStuff = fromIndexHelper<invert, 4, 4>(index - OFFSETS[4][4]);
 	else if (index < OFFSETS[3][4]) bbStuff = fromIndexHelper<invert, 4, 3>(index - OFFSETS[4][3]);
 	else if (index < OFFSETS[3][3]) bbStuff = fromIndexHelper<invert, 3, 4>(index - OFFSETS[3][4]);
 	else if (index < OFFSETS[4][2]) bbStuff = fromIndexHelper<invert, 3, 3>(index - OFFSETS[3][3]);
@@ -196,8 +225,21 @@ Board Board::fromIndex(U64 index) {
 	U64 bbk0, bbk1;
 	std::tie(bbk0, bbk1) = TABLE_BBKINGS[bbStuff.ik];
 
-	bbp1 = _pdep_u64(bbp1, ~bbk0 & ~bbk1) | bbp1; // P1 pawns skip over kings
-	bbp0 = _pdep_u64(bbp0, ~bbk0 & ~bbp1) | bbk0; // P0 pawns skip over P0 king and P1 pawns
+	U64 bbp1 = _pdep_u64(bbStuff.bbpc1, ~bbk0 & ~bbk1) | bbk1; // P1 pawns skip over kings
+	U64 bbp0 = _pdep_u64(bbStuff.bbpc0, ~bbk0 & ~bbp1) | bbk0; // P0 pawns skip over P0 king and P1 pawns
+
+	// std::cout << index << " " << Board::toIndex<invert>({
+	// 	.bbp0 = bbp0,
+	// 	.bbp1 = bbp1,
+	// 	.bbk0 = bbk0,
+	// 	.bbk1 = bbk1,
+	// }) << std::endl;
+	assert(index == Board::toIndex<invert>({
+		.bbp0 = bbp0,
+		.bbp1 = bbp1,
+		.bbk0 = bbk0,
+		.bbk1 = bbk1,
+	}));
 
 	return {
 		.bbp0 = bbp0,
@@ -209,3 +251,15 @@ Board Board::fromIndex(U64 index) {
 
 
 
+
+
+void testIndexing() {
+	std::cout << TB_SIZE << std::endl;
+	for (U64 i = 0; i < TB_SIZE; i++) {
+		// std::cout << i << " " << Board::toIndex<false>(Board::fromIndex<false>(i)) << std::endl;
+		if (i % 10000000 == 0)
+			std::cout << i << std::endl;
+		Board::fromIndex<false>(i);
+		// assert(i == Board::toIndex<false>(Board::fromIndex<false>(i)));
+	}
+}
