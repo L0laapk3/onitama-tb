@@ -6,6 +6,8 @@
 
 
 int main(int, char**) {
+
+    // testIndexing();
     
     constexpr CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB };
     generateTB(CARDS);

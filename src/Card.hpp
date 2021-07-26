@@ -119,7 +119,7 @@ constexpr auto generateMoveBoard(const U32 card) {
     };
 	U32 cardInverted = 0;
 	for (U64 i = 0; i < 25; i++)
-		cardInverted |= (card >> i & 1) << (invert ? 24 - i : i);
+		cardInverted |= ((card >> i) & 1) << (invert ? 24 - i : i);
 
 	MoveBoard moveBoard;
     for (U64 i = 0; i < 25; i++) {
@@ -157,3 +157,6 @@ struct CardsInfo {
 	MoveBoardSet moveBoardsForward = generateMoveBoardSet<false>(cards);
 	MoveBoardSet moveBoardsReverse = generateMoveBoardSet<true>(cards);
 };
+
+
+void print(MoveBoard moves);

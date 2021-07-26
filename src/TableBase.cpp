@@ -66,13 +66,20 @@ void generateFirstWins(const CardsInfo& cards, TableBase& tb, U64 thisThread, U6
 	for (U64 cardI = 0; cardI < 30; cardI++) { // naive way
 		auto permutation = CARDS_PERMUTATIONS[cardI];
 		MoveBoard combinedMoveBoardReverse = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
+		// std::cout << (U32)permutation.playerCards[0][0] << " " << (U32)permutation.playerCards[0][1] << std::endl;
+		// print(combinedMoveBoardReverse);
 
 		auto& row = tb[cardI];
 		for (U64 index = TB_ROW_SIZE * thisThread / numThreads; index < TB_ROW_SIZE * (thisThread + 1) / numThreads; index++) {
 			auto board = indexToBoard<false>(index);
+
+			if (_popcnt64(board.bbp[0]) > 1 || _popcnt64(board.bbp[1]) > 1)
+				continue;
 			
-			if (board.isWinInOne<false>(combinedMoveBoardReverse))
+			if (board.isWinInOne<false>(combinedMoveBoardReverse)) {
+				board.print();
 				row[index / 32].fetch_or(1ULL << (index % 32), std::memory_order_relaxed);
+			}
 		}
 	}
 }
