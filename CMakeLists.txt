@@ -4,6 +4,8 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 
 set(source_files
 ${PROJECT_SOURCE_DIR}/src/Index.cpp
+${PROJECT_SOURCE_DIR}/src/Board.cpp
+${PROJECT_SOURCE_DIR}/src/TableBase.cpp
 ${PROJECT_SOURCE_DIR}/src/Main.cpp
 )
 

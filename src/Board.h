@@ -1,18 +1,19 @@
 #pragma once
 
 #include "Types.h"
+#include "Card.hpp"
 
 #include <array>
 
+
+
+constexpr std::array<U64, 2> PTEMPLE = { 2, 22 };
+
 class Board {
 public:
-	U64 bbp0;
-	U64 bbp1;
-	U64 bbk0;
-	U64 bbk1;
+	std::array<U64, 2> bbp;
+	std::array<U64, 2> bbk;
 
-	template <bool invert>
-	static U64 toIndex(const Board& board);
-	template <bool invert>
-	static Board fromIndex(U64 index);
+	template <U64 player>
+	bool isWinInOne(const MoveBoard& inverseMovement);
 };

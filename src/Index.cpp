@@ -1,18 +1,15 @@
-#include "Board.h"
+#include "Index.h"
 
-#include "Helper.h"
-
-#include <array>
-#include <tuple>
 #include <utility>
 #include <cassert>
 #include "x86intrin.h"
 #include <xmmintrin.h>
 #include <iostream>
 
-#define TB_MEN 10
 
-constexpr U64 KINGSMULT = 24 + 23*23;
+
+constexpr auto OFFSETS = GENERATE_TABLE_SIZES<false>().first;
+constexpr auto MAX_INDEX = GENERATE_TABLE_SIZES<true>().first;
 
 constexpr auto PIECES0MULT = [](){
 	std::array<U64, TB_MEN/2> a;
@@ -21,35 +18,6 @@ constexpr auto PIECES0MULT = [](){
 	return a;
 }();
 
-constexpr auto OFFSET_ORDER = []() {
-	std::array<std::pair<U64, U64>, TB_MEN/2 * TB_MEN/2> a;
-    int index = 0;
-	for (int i = TB_MEN - 1; i-- > 0; )
-        for (int j = i % 2; j <= TB_MEN; j += 2)
-            for (int k = -1; k <= (j == 0 ? 0 : 1); k += 2)
-                if (i - j >= 0 && i + j <= TB_MEN - 2) {
-                    int p0c = (i - k * j) / 2, p1c = (i + k * j) / 2;
-                    a[index++] = { p0c, p1c };
-                }
-	// for (int p0c = TB_MEN/2-1; p0c --> 0; )
-	// 	for (int p1c = TB_MEN/2-1; p1c --> 0; )
-	// 		a[index++] = { p0c, p1c };
-    return a;
-}();
-template<bool includeSelf>
-constexpr auto GENERATE_TABLE_SIZES() {
-	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a;
-    U64 offset_cumul = 0;
-	for (auto& pc : OFFSET_ORDER) {
-		if (!includeSelf) a[pc.first][pc.second] = offset_cumul;
-        offset_cumul += KINGSMULT * (fact(23, 23-pc.first) / fact(pc.first)) * (fact(23-pc.first, 23-pc.first-pc.second) / fact(pc.second));
-		if (includeSelf) a[pc.first][pc.second] = offset_cumul;
-    }
-	return std::pair{ a, offset_cumul };
-}
-constexpr auto OFFSETS = GENERATE_TABLE_SIZES<false>().first;
-constexpr auto MAX_INDEX = GENERATE_TABLE_SIZES<true>().first;
-constexpr U64 TB_SIZE = GENERATE_TABLE_SIZES<false>().second;
 
 constexpr auto OFFSETS_SUB_EMPTY = [](){
 	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a;
@@ -57,7 +25,7 @@ constexpr auto OFFSETS_SUB_EMPTY = [](){
 		for (int p1c = 0; p1c < TB_MEN/2; p1c++) {
 			U64 offset = OFFSETS[p0c][p1c];
 
-			// when not all pieces are on the board, lzcnt/tzcnt return 64. We offset this in the compile-time tables.
+			// when not all pieces are on the board, lzcnt/tzcnt returns 64. We include this here at compile-time in the offset tables.
 			if (p0c < 4) offset -= KINGSMULT * 64 * 63 * 62 * 61 / 24;
 			if (p0c < 3) offset -= KINGSMULT * 64 * 63 * 62 / 6;
 			if (p0c < 2) offset -= KINGSMULT * 64 * 63 / 2;
@@ -79,7 +47,7 @@ constexpr auto TABLE_TWOKINGS = [](){
 	U32 i = 0;
 	for (int j = 0; j < 25; j++)
 		for (int k = 0; k < 25; k++)
-            a[j*25 + k] = k != j && j != 2 && k != 22 ? i++ : -1;
+            a[j*25 + k] = k != j && j != PTEMPLE[0] && k != PTEMPLE[1] ? i++ : -1;
     return a;
 }();
 constexpr auto TABLE_BBKINGS = [](){
@@ -87,7 +55,7 @@ constexpr auto TABLE_BBKINGS = [](){
 	U32 i = 0;
 	for (int j = 0; j < 25; j++)
 		for (int k = 0; k < 25; k++)
-			if (k != j && j != 2 && k != 22)
+			if (k != j && j != PTEMPLE[0] && k != PTEMPLE[1])
 				a[i++] = { 1ULL << j, 1ULL << k };
 	return a;
 }();
@@ -135,17 +103,17 @@ constexpr auto TABLE_TWOPAWNS = GENERATE_PAWN_TABLE<2>();
 
 
 template <bool invert>
-U64 Board::toIndex(const Board& board) {
+U64 boardToIndex(const Board& board) {
 
-	U64 ik0 = _tzcnt_u64(board.bbk0); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
-	U64 ik1 = _tzcnt_u64(board.bbk1);
+	U64 ik0 = _tzcnt_u64(board.bbk[0]); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
+	U64 ik1 = _tzcnt_u64(board.bbk[1]);
 	U64 rk = TABLE_TWOKINGS[ik0*25 + ik1];
 
-	U64 bbpp0 = board.bbp0 - board.bbk0;
-	U64 bbpp1 = board.bbp1 - board.bbk1;
+	U64 bbpp0 = board.bbp[0] - board.bbk[0];
+	U64 bbpp1 = board.bbp[1] - board.bbk[1];
 	
-	U64 bbpc0 = _pext_u64(bbpp0, ~board.bbk0 & ~board.bbp1); // P0 pawns skip over P0 king and P1 pawns
-	U64 bbpc1 = _pext_u64(bbpp1, ~board.bbk0 & ~board.bbk1); // P1 pawns skip over kings
+	U64 bbpc0 = _pext_u64(bbpp0, ~board.bbk[0] & ~board.bbp[1]); // P0 pawns skip over P0 king and P1 pawns
+	U64 bbpc1 = _pext_u64(bbpp1, ~board.bbk[0] & ~board.bbk[1]); // P1 pawns skip over kings
 	
 	U64 pp0cnt = _popcnt64(bbpp0);
 	U64 pp1cnt = _popcnt64(bbpp1);
@@ -219,7 +187,7 @@ FromIndexHalfReturn fromIndexHelper(U64 index) {
 }
 
 template <bool invert>
-Board Board::fromIndex(U64 index) {
+Board indexToBoard(U64 index) {
 
 	FromIndexHalfReturn bbStuff;
 	if (0);
@@ -275,40 +243,35 @@ Board Board::fromIndex(U64 index) {
 	// 	.bbk0 = bbk0,
 	// 	.bbk1 = bbk1,
 	// }) << std::endl;
-	if(index != Board::toIndex<invert>({
-		.bbp0 = bbp0,
-		.bbp1 = bbp1,
-		.bbk0 = bbk0,
-		.bbk1 = bbk1,
-	})) {
+	Board board{
+		.bbp = { bbp0, bbp1 },
+		.bbk = { bbk0, bbk1 },
+	};
+
+	if (false && index != boardToIndex<invert>(board)) {
 		std::cout << index << std::endl;
-		assert(index == Board::toIndex<invert>({
-			.bbp0 = bbp0,
-			.bbp1 = bbp1,
-			.bbk0 = bbk0,
-			.bbk1 = bbk1,
-		}));
+		assert(index == boardToIndex<invert>(board));
 	}
 
-	return {
-		.bbp0 = bbp0,
-		.bbp1 = bbp1,
-		.bbk0 = bbk0,
-		.bbk1 = bbk1,
-	};
+	return board;
 }
 
+
+template U64 boardToIndex<false>(const Board& board);
+template U64 boardToIndex<true>(const Board& board);
+template Board indexToBoard<false>(U64 index);
+template Board indexToBoard<true>(U64 index);
 
 
 
 
 void testIndexing() {
-	std::cout << TB_SIZE << std::endl;
-	for (U64 i = 0; i < TB_SIZE; i++) {
+	std::cout << TB_ROW_SIZE << std::endl;
+	for (U64 i = 0; i < TB_ROW_SIZE; i++) {
 		// std::cout << i << " " << Board::toIndex<false>(Board::fromIndex<false>(i)) << std::endl;
 		if (i % 100000000 == 0)
 			std::cout << i << std::endl;
-		Board::fromIndex<false>(i);
+		indexToBoard<false>(i);
 		// assert(i == Board::toIndex<false>(Board::fromIndex<false>(i)));
 	}
 }

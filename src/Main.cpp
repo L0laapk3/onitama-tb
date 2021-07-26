@@ -1,10 +1,14 @@
+#include "Card.hpp"
+#include "TableBase.h"
+
 #include <iostream>
 
-#include "Board.h"
-#include "Index.h"
+
 
 int main(int, char**) {
     
-    testIndexing();
-    std::cout << "Hello, world!\n";
+    constexpr CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB };
+    generateTB(CARDS);
+
+    std::cout << "done" << std::endl;
 }
