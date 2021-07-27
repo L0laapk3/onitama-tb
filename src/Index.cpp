@@ -5,6 +5,7 @@
 #include "x86intrin.h"
 #include <xmmintrin.h>
 #include <iostream>
+#include <bitset>
 
 
 
@@ -112,8 +113,8 @@ U64 boardToIndex(const Board& board) {
 	U64 bbpp0 = board.bbp[0] - board.bbk[0];
 	U64 bbpp1 = board.bbp[1] - board.bbk[1];
 	
-	U64 bbpc0 = _pext_u64(bbpp0, ~board.bbk[0] & ~board.bbp[1]); // P0 pawns skip over P0 king and P1 pawns
-	U64 bbpc1 = _pext_u64(bbpp1, ~board.bbk[0] & ~board.bbk[1]); // P1 pawns skip over kings
+	U64 bbpc0 = _pext_u64(bbpp0, ~board.bbk[0] & ~board.bbk[1]); // P0 pawns skip over kings
+	U64 bbpc1 = _pext_u64(bbpp1, ~board.bbk[1] & ~board.bbp[0]); // P1 pawns skip over kings and P0 pawns
 	
 	U64 pp0cnt = _popcnt64(bbpp0);
 	U64 pp1cnt = _popcnt64(bbpp1);
@@ -161,7 +162,9 @@ U64 boardToIndex(const Board& board) {
 
 	r *= KINGSMULT;
 	r += rk;
-	return offset + r;
+
+	r += offset;
+	return r;
 }
 
 
@@ -175,14 +178,21 @@ template <bool invert, int p0c, int p1c>
 FromIndexHalfReturn fromIndexHelper(U64 index) {
 	index -= OFFSETS[p0c][p1c];
 	constexpr U64 p0mult = PIECES0MULT[p0c];
+
 	U64 ik = index % KINGSMULT;
 	index /= KINGSMULT;
 	U64 ip0 = index % p0mult;
 	index /= p0mult;
+	U64 ip1 = index;
+
+	// if (ik == 0)
+	// 	std::cout << p0c << " " << p1c << " " << ik << " " << ip0 << " " << ip1 << std::endl;
+	// assert(ik != 0 || ip0 != 210);
+
 	return {
 		.ik = ik,
 		.bbpc0 = *(PAWNTABLE_POINTERS[p0c] + ip0),
-		.bbpc1 = *(PAWNTABLE_POINTERS[p1c] + index),
+		.bbpc1 = *(PAWNTABLE_POINTERS[p1c] + ip1),
 	};
 }
 
@@ -234,8 +244,10 @@ Board indexToBoard(U64 index) {
 	U64 bbk0, bbk1;
 	std::tie(bbk0, bbk1) = TABLE_BBKINGS[bbStuff.ik];
 
-	U64 bbp1 = _pdep_u64(bbStuff.bbpc1, ~bbk0 & ~bbk1) | bbk1; // P1 pawns skip over kings
-	U64 bbp0 = _pdep_u64(bbStuff.bbpc0, ~bbk0 & ~bbp1) | bbk0; // P0 pawns skip over P0 king and P1 pawns
+	U64 bbp0 = _pdep_u64(bbStuff.bbpc0, ~bbk0 & ~bbk1) | bbk0; // P0 pawns skip over kings
+	U64 bbp1 = _pdep_u64(bbStuff.bbpc1, ~bbk1 & ~bbp0) | bbk1; // P1 pawns skip over kings and P0 pawns
+
+	assert(bbp0 < (1 << 25));
 
 	// std::cout << index << " " << Board::toIndex<invert>({
 	// 	.bbp0 = bbp0,
@@ -243,17 +255,22 @@ Board indexToBoard(U64 index) {
 	// 	.bbk0 = bbk0,
 	// 	.bbk1 = bbk1,
 	// }) << std::endl;
-	Board board{
+
+	if (0) {
+		Board board{
+			.bbp = { bbp0 & ((1 << 25) - 1), bbp1 & ((1 << 25) - 1) },
+			.bbk = { bbk0 & ((1 << 25) - 1), bbk1 & ((1 << 25) - 1) },
+		};
+		if (index != boardToIndex<invert>(board)) {
+			std::cout << "problem " << index << std::endl;
+			assert(index == boardToIndex<invert>(board));
+		}
+	}
+
+	return {
 		.bbp = { bbp0, bbp1 },
 		.bbk = { bbk0, bbk1 },
 	};
-
-	if (false && index != boardToIndex<invert>(board)) {
-		std::cout << index << std::endl;
-		assert(index == boardToIndex<invert>(board));
-	}
-
-	return board;
 }
 
 
@@ -266,11 +283,17 @@ template Board indexToBoard<true>(U64 index);
 
 
 void testIndexing() {
-	std::cout << TB_ROW_SIZE << std::endl;
+	// indexToBoard<false>(35269763);
+	// auto b1 = indexToBoard<false>(35829952);
+	// auto b2 = indexToBoard<false>(35269763);
+	// b1.print();
+	// b2.print();
+	// std::cout << std::bitset<26>(b1.bbp[0]) << " " << std::bitset<26>(b1.bbp[1]) << " " << std::bitset<26>(b1.bbp[0]) << " " << std::bitset<26>(b1.bbp[1]) << " " << std::endl;
+	// std::cout << std::bitset<26>(b2.bbp[0]) << " " << std::bitset<26>(b2.bbp[1]) << " " << std::bitset<26>(b2.bbp[0]) << " " << std::bitset<26>(b2.bbp[1]) << " " << std::endl;
+
+
 	for (U64 i = 0; i < TB_ROW_SIZE; i++) {
 		// std::cout << i << " " << Board::toIndex<false>(Board::fromIndex<false>(i)) << std::endl;
-		if (i % 100000000 == 0)
-			std::cout << i << std::endl;
 		indexToBoard<false>(i);
 		// assert(i == Board::toIndex<false>(Board::fromIndex<false>(i)));
 	}
