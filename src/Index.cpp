@@ -6,6 +6,7 @@
 #include <xmmintrin.h>
 #include <iostream>
 #include <bitset>
+#include <algorithm>
 
 
 
@@ -51,64 +52,135 @@ constexpr auto TABLE_TWOKINGS = [](){
             a[j*25 + k] = k != j && j != PTEMPLE[0] && k != PTEMPLE[1] ? i++ : -1;
     return a;
 }();
-constexpr auto TABLE_BBKINGS = [](){
-	std::array<std::pair<U32, U32>, KINGSMULT> a;
-	U32 i = 0;
-	for (int j = 0; j < 25; j++)
-		for (int k = 0; k < 25; k++)
-			if (k != j && j != PTEMPLE[0] && k != PTEMPLE[1])
-				a[i++] = { 1ULL << j, 1ULL << k };
+constexpr auto TABLES_BBKINGS = [](){
+	std::array<std::array<std::pair<U32, U32>, KINGSMULT>, 2> a;
+	for (U64 inv = 0; inv < 2; inv++) {
+		U32 i = 0;
+		for (int j = 0; j < 25; j++)
+			for (int k = 0; k < 25; k++)
+				if (k != j && j != PTEMPLE[0] && k != PTEMPLE[1])
+					a[inv][i++] = { 1ULL << (inv ? 24 - j : j), 1ULL << (inv ? 24 - k : k) };
+	}
 	return a;
 }();
 
 
 
-template<int size>
+template<int pawns, int size, bool invert>
 constexpr void GENERATE_PAWN_TABLE_PAWN(U32 bb, int remaining, std::array<U32, size>& a, std::array<U32, 4> p, U32 index) {
 	if (remaining <= 0) {
 		U64 rp = p[3] * (p[3]-1) * (p[3]-2) * (p[3]-3);
 		rp    += p[2] * (p[2]-1) * (p[2]-2) * 4;
 		rp    += p[1] * (p[1]-1) * 12;
+		if (invert) {
+			U32 bbrev = 0;
+			for (U64 i = 0; i < 23; i++) {
+				bbrev = (bbrev << 1) + (bb & 1);
+				bb >>= 1;
+			}
+			bb = bbrev;
+		}
 		a[rp / 24 + p[0]] = bb;
 	} else
 		for (p[index] = 0; p[index] < 23; p[index]++) {
 			U64 bbp = 1 << p[index];
 			if (bbp > bb)
-				GENERATE_PAWN_TABLE_PAWN<size>(bbp | bb, remaining - 1, a, p, index + 1);
+				GENERATE_PAWN_TABLE_PAWN<pawns, size, invert>(bbp | bb, remaining - 1, a, p, index + 1);
 		}
 }
-template<int pawns>
+template<int pawns, bool invert>
 constexpr auto GENERATE_PAWN_TABLE() {
 	const U64 size = fact(23, 23-pawns) / fact(pawns);
 	std::array<U32, size> a;
-	GENERATE_PAWN_TABLE_PAWN<size>(0, pawns, a, { 0 }, 0);
+	GENERATE_PAWN_TABLE_PAWN<pawns, size, invert>(0, pawns, a, { 0 }, 0);
     return a;
 };
 
-constexpr auto TABLE_ZEROPAWNS = GENERATE_PAWN_TABLE<0>();
-constexpr auto TABLE_ONEPAWN = GENERATE_PAWN_TABLE<1>();
-constexpr auto TABLE_TWOPAWNS = GENERATE_PAWN_TABLE<2>();
+constexpr auto TABLE_ZEROPAWNS = GENERATE_PAWN_TABLE<0, false>();
+constexpr auto TABLE_ONEPAWN = GENERATE_PAWN_TABLE<1, false>();
+constexpr auto TABLE_TWOPAWNS = GENERATE_PAWN_TABLE<2, false>();
 #if TB_MEN >= 8
-	constexpr auto TABLE_THREEPAWNS = GENERATE_PAWN_TABLE<3>();
+	constexpr auto TABLE_THREEPAWNS = GENERATE_PAWN_TABLE<3, false>();
 #endif
 #if TB_MEN >= 10
-	constexpr auto TABLE_FOURPAWNS = GENERATE_PAWN_TABLE<4>();
+	constexpr auto TABLE_FOURPAWNS = GENERATE_PAWN_TABLE<4, false>();
+#endif
+constexpr auto TABLE_ZEROPAWNS_INV = GENERATE_PAWN_TABLE<0, true>();
+constexpr auto TABLE_ONEPAWN_INV = GENERATE_PAWN_TABLE<1, true>();
+constexpr auto TABLE_TWOPAWNS_INV = GENERATE_PAWN_TABLE<2, true>();
+#if TB_MEN >= 8
+	constexpr auto TABLE_THREEPAWNS_INV = GENERATE_PAWN_TABLE<3, true>();
+#endif
+#if TB_MEN >= 10
+	constexpr auto TABLE_FOURPAWNS_INV = GENERATE_PAWN_TABLE<4, true>();
 #endif
 #if TB_MEN == 6
-	constexpr std::array<const U32*, 3> PAWNTABLE_POINTERS = { &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0] };
+	constexpr std::array<std::array<const U32*, 3>, 2> PAWNTABLE_POINTERS = {{
+		{ &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0] },
+		{ &TABLE_ZEROPAWNS_INV[0], &TABLE_ONEPAWN_INV[0], &TABLE_TWOPAWNS_INV[0] },
+	}};
 #elif TB_MEN == 8
-	constexpr std::array<const U32*, 4> PAWNTABLE_POINTERS = { &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0] };
+	constexpr std::array<std::array<const U32*, 4>, 2> PAWNTABLE_POINTERS = {{
+		{ &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0] },
+		{ &TABLE_ZEROPAWNS_INV[0], &TABLE_ONEPAWN_INV[0], &TABLE_TWOPAWNS_INV[0], &TABLE_THREEPAWNS_INV[0] },
+	}};
 #else
-	constexpr std::array<const U32*, 5> PAWNTABLE_POINTERS = { &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0], &TABLE_FOURPAWNS[0] };
+	constexpr std::array<std::array<const U32*, 5>, 2> PAWNTABLE_POINTERS = {{
+		{ &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0], &TABLE_FOURPAWNS[0] },
+		{ &TABLE_ZEROPAWNS_INV[0], &TABLE_ONEPAWN_INV[0], &TABLE_TWOPAWNS_INV[0], &TABLE_THREEPAWNS_INV[0], &TABLE_FOURPAWNS_INV[0] },
+	}};
 #endif
+// template<int size>
+// constexpr void GENERATE_PAWN_TABLE_PAWN(U32 bb, int remaining, std::array<U32, size>& a, std::array<U32, 4> p, U32 index) {
+// 	if (remaining <= 0) {
+// 		U64 rp = p[3] * (p[3]-1) * (p[3]-2) * (p[3]-3);
+// 		rp    += p[2] * (p[2]-1) * (p[2]-2) * 4;
+// 		rp    += p[1] * (p[1]-1) * 12;
+// 		a[rp / 24 + p[0]] = bb;
+// 	} else
+// 		for (p[index] = 0; p[index] < 23; p[index]++) {
+// 			U64 bbp = 1 << p[index];
+// 			if (bbp > bb)
+// 				GENERATE_PAWN_TABLE_PAWN<size>(bbp | bb, remaining - 1, a, p, index + 1);
+// 		}
+// }
+// template<int pawns>
+// constexpr auto GENERATE_PAWN_TABLE() {
+// 	const U64 size = fact(23, 23-pawns) / fact(pawns);
+// 	std::array<U32, size> a;
+// 	GENERATE_PAWN_TABLE_PAWN<size>(0, pawns, a, { 0 }, 0);
+//     return a;
+// };
+
+// constexpr auto TABLE_ZEROPAWNS = GENERATE_PAWN_TABLE<0>();
+// constexpr auto TABLE_ONEPAWN = GENERATE_PAWN_TABLE<1>();
+// constexpr auto TABLE_TWOPAWNS = GENERATE_PAWN_TABLE<2>();
+// #if TB_MEN >= 8
+// 	constexpr auto TABLE_THREEPAWNS = GENERATE_PAWN_TABLE<3>();
+// #endif
+// #if TB_MEN >= 10
+// 	constexpr auto TABLE_FOURPAWNS = GENERATE_PAWN_TABLE<4>();
+// #endif
+// #if TB_MEN == 6
+// 	constexpr std::array<const U32*, 3> PAWNTABLE_POINTERS = { &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0] };
+// #elif TB_MEN == 8
+// 	constexpr std::array<const U32*, 4> PAWNTABLE_POINTERS = { &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0] };
+// #else
+// 	constexpr std::array<const U32*, 5> PAWNTABLE_POINTERS = { &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0], &TABLE_FOURPAWNS[0] };
+// #endif
 
 
 template <bool invert>
-U64 boardToIndex(const Board& board) {
+U64 boardToIndex(Board board) {
+	if (invert) {
+		std::swap(board.bbp[0], board.bbp[1]);
+		std::swap(board.bbk[0], board.bbk[1]);
+	}
 
-	U64 ik0 = _tzcnt_u64(board.bbk[0]); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
-	U64 ik1 = _tzcnt_u64(board.bbk[1]);
+	U64 ik0 = invert ? _lzcnt_u64(board.bbk[0]) - 39 : _tzcnt_u64(board.bbk[0]); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
+	U64 ik1 = invert ? _lzcnt_u64(board.bbk[1]) - 39 : _tzcnt_u64(board.bbk[1]);
 	U64 rk = TABLE_TWOKINGS[ik0*25 + ik1];
+	assert(rk != (U32)-1);
 
 	U64 bbpp0 = board.bbp[0] - board.bbk[0];
 	U64 bbpp1 = board.bbp[1] - board.bbk[1];
@@ -136,17 +208,17 @@ U64 boardToIndex(const Board& board) {
 		ip1p2 = _tzcnt_u64(bbpc1 &= bbpc1-1);
 		ip1p3 = _tzcnt_u64(bbpc1 &= bbpc1-1);
 	} else {
-		bbpc0 <<= 39;
+		bbpc0 <<= 41;
 		ip0p0 = _lzcnt_u64(bbpc0);
-		ip0p1 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p0));
-		ip0p2 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p1));
-		ip0p3 = _lzcnt_u64(bbpc0 &= ~(1ULL << ip0p2));
+		ip0p1 = _lzcnt_u64(bbpc0 &= ~(1ULL << 63 >> ip0p0));
+		ip0p2 = _lzcnt_u64(bbpc0 &= ~(1ULL << 63 >> ip0p1));
+		ip0p3 = _lzcnt_u64(bbpc0 &= ~(1ULL << 63 >> ip0p2));
 
-		bbpc1 <<= 39;
+		bbpc1 <<= 41 + pp0cnt;
 		ip1p0 = _lzcnt_u64(bbpc1);
-		ip1p1 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p0));
-		ip1p2 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p1));
-		ip1p3 = _lzcnt_u64(bbpc1 &= ~(1ULL << ip1p2));
+		ip1p1 = _lzcnt_u64(bbpc1 &= ~(1ULL << 63 >> ip1p0));
+		ip1p2 = _lzcnt_u64(bbpc1 &= ~(1ULL << 63 >> ip1p1));
+		ip1p3 = _lzcnt_u64(bbpc1 &= ~(1ULL << 63 >> ip1p2));
 	}
 
 	U64 rp1 = ip1p3 * (ip1p3-1) * (ip1p3-2) * (ip1p3-3);
@@ -164,6 +236,7 @@ U64 boardToIndex(const Board& board) {
 	r += rk;
 
 	r += offset;
+	assert(r < TB_ROW_SIZE);
 	return r;
 }
 
@@ -191,12 +264,12 @@ FromIndexHalfReturn fromIndexHelper(U64 index) {
 
 	return {
 		.ik = ik,
-		.bbpc0 = *(PAWNTABLE_POINTERS[p0c] + ip0),
-		.bbpc1 = *(PAWNTABLE_POINTERS[p1c] + ip1),
+		.bbpc0 = *(PAWNTABLE_POINTERS[invert][p0c] + ip0),
+		.bbpc1 = *(PAWNTABLE_POINTERS[invert][p1c] + ip1) >> (invert ? p0c : 0),
 	};
 }
 
-template <bool invert>
+template<bool invert>
 Board indexToBoard(U64 index) {
 
 	FromIndexHalfReturn bbStuff;
@@ -242,30 +315,18 @@ Board indexToBoard(U64 index) {
 	else                              bbStuff = fromIndexHelper<invert, 0, 0>(index);
 
 	U64 bbk0, bbk1;
-	std::tie(bbk0, bbk1) = TABLE_BBKINGS[bbStuff.ik];
+	std::tie(bbk0, bbk1) = TABLES_BBKINGS[invert][bbStuff.ik];
 
 	U64 bbp0 = _pdep_u64(bbStuff.bbpc0, ~bbk0 & ~bbk1) | bbk0; // P0 pawns skip over kings
 	U64 bbp1 = _pdep_u64(bbStuff.bbpc1, ~bbk1 & ~bbp0) | bbk1; // P1 pawns skip over kings and P0 pawns
+	
+	if (invert) {
+		std::swap(bbp0, bbp1);
+		std::swap(bbk0, bbk1);
+	}
 
 	assert(bbp0 < (1 << 25));
-
-	// std::cout << index << " " << Board::toIndex<invert>({
-	// 	.bbp0 = bbp0,
-	// 	.bbp1 = bbp1,
-	// 	.bbk0 = bbk0,
-	// 	.bbk1 = bbk1,
-	// }) << std::endl;
-
-	if (0) {
-		Board board{
-			.bbp = { bbp0 & ((1 << 25) - 1), bbp1 & ((1 << 25) - 1) },
-			.bbk = { bbk0 & ((1 << 25) - 1), bbk1 & ((1 << 25) - 1) },
-		};
-		if (index != boardToIndex<invert>(board)) {
-			std::cout << "problem " << index << std::endl;
-			assert(index == boardToIndex<invert>(board));
-		}
-	}
+	assert(bbp1 < (1 << 25));
 
 	return {
 		.bbp = { bbp0, bbp1 },
@@ -274,8 +335,8 @@ Board indexToBoard(U64 index) {
 }
 
 
-template U64 boardToIndex<false>(const Board& board);
-template U64 boardToIndex<true>(const Board& board);
+template U64 boardToIndex<false>(Board board);
+template U64 boardToIndex<true>(Board board);
 template Board indexToBoard<false>(U64 index);
 template Board indexToBoard<true>(U64 index);
 
@@ -283,18 +344,41 @@ template Board indexToBoard<true>(U64 index);
 
 
 void testIndexing() {
-	// indexToBoard<false>(35269763);
-	// auto b1 = indexToBoard<false>(35829952);
-	// auto b2 = indexToBoard<false>(35269763);
-	// b1.print();
-	// b2.print();
-	// std::cout << std::bitset<26>(b1.bbp[0]) << " " << std::bitset<26>(b1.bbp[1]) << " " << std::bitset<26>(b1.bbp[0]) << " " << std::bitset<26>(b1.bbp[1]) << " " << std::endl;
-	// std::cout << std::bitset<26>(b2.bbp[0]) << " " << std::bitset<26>(b2.bbp[1]) << " " << std::bitset<26>(b2.bbp[0]) << " " << std::bitset<26>(b2.bbp[1]) << " " << std::endl;
 
-
-	for (U64 i = 0; i < TB_ROW_SIZE; i++) {
-		// std::cout << i << " " << Board::toIndex<false>(Board::fromIndex<false>(i)) << std::endl;
-		indexToBoard<false>(i);
-		// assert(i == Board::toIndex<false>(Board::fromIndex<false>(i)));
-	}
+	// std::cout << index << " " << Board::toIndex<invert>({
+	// 	.bbp0 = bbp0,
+	// 	.bbp1 = bbp1,
+	// 	.bbk0 = bbk0,
+	// 	.bbk1 = bbk1,
+	// }) << std::endl;
+	
+	std::cout << "testing normal to normal" << std::endl;
+	for (U64 i = 0; i < TB_ROW_SIZE; i++)
+		if (i != boardToIndex<false>(indexToBoard<false>(i))) {
+			std::cout << "problem normal to normal " << i << std::endl;
+			boardToIndex<false>(indexToBoard<false>(i));
+		}
+	
+	std::cout << "testing inverted to inverted" << std::endl;
+	for (U64 i = 0; i < TB_ROW_SIZE; i++)
+		if (i != boardToIndex<true>(indexToBoard<true>(i))) {
+			indexToBoard<false>(i).print();
+			indexToBoard<true>(i).print();
+			std::cout << "problem inverted to inverted " << i << std::endl;
+			boardToIndex<true>(indexToBoard<true>(i));
+		}
+	
+	std::cout << "testing normal to inverted" << std::endl;
+	for (U64 i = 0; i < TB_ROW_SIZE; i++)
+		if (i != boardToIndex<true>(indexToBoard<false>(i).invert())) {
+			std::cout << "problem normal to inverted " << i << std::endl;
+			boardToIndex<true>(indexToBoard<false>(i).invert());
+		}
+	
+	std::cout << "testing inverted to normal" << std::endl;
+	for (U64 i = 0; i < TB_ROW_SIZE; i++)
+		if (i != boardToIndex<false>(indexToBoard<true>(i).invert())) {
+			std::cout << "problem inverted to normal " << i << std::endl;
+			boardToIndex<false>(indexToBoard<true>(i).invert());
+		}
 }

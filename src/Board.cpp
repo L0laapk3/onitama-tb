@@ -20,7 +20,7 @@ template bool Board::isWinInOne<1>(const MoveBoard& reverseMoveBoard);
 
 
 
-void Board::print() {
+void Board::print() const {
 	for (int r = 5; r-- > 0;) {
 		for (int c = 0; c < 5; c++) {
 			const int mask = 1 << (5 * r + c);
@@ -37,4 +37,23 @@ void Board::print() {
 		std::cout << std::endl;
 	}
 	std::cout << std::endl;
+}
+
+
+Board Board::invert() const {
+	Board board{};
+	for (U64 k = 0; k < 2; k++) {
+		U64 bbprev = bbp[k];
+		U64 bbkrev = bbk[k];
+		for (U64 i = 0; i < 25; i++) {
+			board.bbp[1-k] = (board.bbp[1-k] << 1) + (bbprev & 1);
+			bbprev >>= 1;
+			board.bbk[1-k] = (board.bbk[1-k] << 1) + (bbkrev & 1);
+			bbkrev >>= 1;
+		}
+	}
+	// print();
+	// board.print();
+	// std::cout << std::endl;
+	return board;
 }

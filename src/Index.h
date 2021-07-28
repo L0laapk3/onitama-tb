@@ -49,6 +49,6 @@ template <bool invert>
 Board indexToBoard(U64 index);
 
 template <bool invert>
-U64 boardToIndex(const Board& board);
+U64 boardToIndex(Board board);
 
 void testIndexing();

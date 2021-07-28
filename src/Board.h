@@ -7,7 +7,7 @@
 
 
 
-constexpr std::array<U64, 2> PTEMPLE = { 22, 2 };
+constexpr std::array<U64, 2> PTEMPLE = { 2, 22 };
 
 class Board {
 public:
@@ -17,5 +17,7 @@ public:
 	template <U64 player>
 	bool isWinInOne(const MoveBoard& inverseMovement);
 
-	void print();
+	// debug utils
+	void print() const;
+	Board invert() const;
 };

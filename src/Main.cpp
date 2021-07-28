@@ -7,10 +7,8 @@
 
 int main(int, char**) {
 
-    // testIndexing();
+    testIndexing();
     
-    constexpr CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB };
-    generateTB(CARDS);
-
-    std::cout << "done" << std::endl;
+    // constexpr CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB };
+    // generateTB(CARDS);
 }
