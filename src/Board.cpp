@@ -33,7 +33,7 @@ void Board::print() const {
 			} else if (bbp[1] & mask) {
 				if (bbk[1] & mask)               std::cout << 'X';
 				else                             std::cout << '+';
-			} else if ((bbk[0] | bbk[1]) & mask) std::cout << '?';
+			} else if ((bbk[0] | bbk[1]) & mask) std::cout << 'F';
 			else                                 std::cout << '.';
 		}
 		std::cout << std::endl;
