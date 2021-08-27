@@ -3,6 +3,7 @@
 #include "x86intrin.h"
 #include <xmmintrin.h>
 #include <iostream>
+#include <bitset>
 
 
 
@@ -12,6 +13,7 @@ bool Board::isWinInOne(const MoveBoard& reverseMoveBoard) {
 	if ((reverseMoveBoard[PTEMPLE[player]] & bbk[player]) && !(bbp[player] & (1 << PTEMPLE[player])))
 		return true;
 	U64 pk = _tzcnt_u64(bbk[1-player]);
+	//std::cout << std::bitset<25>(reverseMoveBoard[pk]) << ' ' << std::bitset<25>(bbp[player]) << std::endl;
 	return reverseMoveBoard[pk] & bbp[player];
 }
 

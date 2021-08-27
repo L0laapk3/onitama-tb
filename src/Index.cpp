@@ -180,7 +180,7 @@ U64 boardToIndex(Board board) {
 	U64 ik0 = invert ? _lzcnt_u64(board.bbk[0]) - 39 : _tzcnt_u64(board.bbk[0]); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
 	U64 ik1 = invert ? _lzcnt_u64(board.bbk[1]) - 39 : _tzcnt_u64(board.bbk[1]);
 	U64 rk = TABLE_TWOKINGS[ik0*25 + ik1];
-	assert(rk != (U32)-1);
+	assert(rk != (U32)-1); // impossible king position check
 
 	U64 bbpp0 = board.bbp[0] - board.bbk[0];
 	U64 bbpp1 = board.bbp[1] - board.bbk[1];

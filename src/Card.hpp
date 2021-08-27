@@ -159,4 +159,4 @@ struct CardsInfo {
 };
 
 
-void print(MoveBoard moves);
+void print(const MoveBoard& moves);

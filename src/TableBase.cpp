@@ -76,42 +76,71 @@ TableBase generateTB(const CardsInfo& cards) {
 
 
 
-
+// marks all p0 to move win in 1 states.
 void generateFirstWins(const CardsInfo& cards, TableBase& tb, U64 thisThread, U64 numThreads) {
 	for (U64 cardI = 0; cardI < 30; cardI++) { // naive way
 		auto permutation = CARDS_PERMUTATIONS[cardI];
-		MoveBoard combinedMoveBoardFLip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
+		MoveBoard combinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
 		// std::cout << cardI << " " << (U32)permutation.playerCards[0][0] << " " << (U32)permutation.playerCards[0][1] << std::endl;
 		// print(combinedMoveBoardReverse);
 
 		auto& row = tb[cardI];
 		for (U64 index = row.size() * thisThread / numThreads * 32; index < std::min(row.size() * (thisThread + 1) / numThreads * 32, TB_ROW_SIZE); index++) {
-			auto board = indexToBoard<true>(index);
+			auto board = indexToBoard<false>(index);
 
-			if (board.isWinInOne<false>(combinedMoveBoardFLip)) {
+			if (board.isWinInOne<false>(combinedMoveBoardFlip)) {
 				// std::cout << index << " " << cardI << " " << (U32)permutation.playerCards[0][0] << " " << (U32)permutation.playerCards[0][1] << " ";
 				// board.print();
 				row[index / 32].fetch_or(0x100000001ULL << (index % 32), std::memory_order_relaxed);
+			}
+
+			if (0) {
+				auto invBoard = indexToBoard<true>(index);
+				auto invCardI = CARDS_INVERT[cardI];
+				auto invPermutation = CARDS_PERMUTATIONS[invCardI];
+				MoveBoard invCombinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsForward[invPermutation.playerCards[1][0]], cards.moveBoardsForward[invPermutation.playerCards[1][1]]);
+				if (board.isWinInOne<false>(combinedMoveBoardFlip) != invBoard.isWinInOne<true>(invCombinedMoveBoardFlip)) {
+					print(combinedMoveBoardFlip);
+					board.print();
+					invBoard.print();
+					std::cout << board.isWinInOne<false>(combinedMoveBoardFlip) << ' ' << invBoard.isWinInOne<true>(invCombinedMoveBoardFlip) << std::endl;
+					board.isWinInOne<false>(combinedMoveBoardFlip);
+					invBoard.isWinInOne<true>(invCombinedMoveBoardFlip);
+					assert(false);
+				}
 			}
 		}
 	}
 }
 
 
-// 104343780
+// iterate over unresolved states to find p0 wins with p1 to move. Check if all possible p1 moves result in wins for p0.
 void singleDepthPass(const CardsInfo& cards, TableBase& tb, U64 thisThread, U64 numThreads) {
+	//if (thisThread != 0)
+	//	return;
 	// check if all P1 moves lead to a victory
 	for (U64 cardI = 0; cardI < 30; cardI++) { // naive way
+	
+		U64 invCardI = CARDS_INVERT[cardI];
+		auto& row = tb[invCardI];
 		auto permutation = CARDS_PERMUTATIONS[cardI];
+		// forward moves for p1 so reverse moveboards
 		const std::array<const MoveBoard*, 2> moveBoards{ &cards.moveBoardsReverse[permutation.playerCards[1][0]], &cards.moveBoardsReverse[permutation.playerCards[1][1]] };
+		//print(*moveBoards[0]);
+		//print(*moveBoards[1]);
+		MoveBoard invCombinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[1][0]], cards.moveBoardsForward[permutation.playerCards[1][1]]);
+
+		
 		const std::array<TableBaseRow*, 2> targetRows{ &tb[CARDS_SWAP[cardI][1][0]], &tb[CARDS_SWAP[cardI][1][1]] };
 
-		auto& row = tb[cardI];
 		for (U64 tbIndex = row.size() * thisThread / numThreads; tbIndex < row.size() * (thisThread + 1) / numThreads; tbIndex++) {
 			auto& entry = row[tbIndex];
 			for (U32 bits = ~entry; bits; bits &= bits-1) {
 				U64 bitIndex = _tzcnt_u64(bits);
-				Board board = indexToBoard<true>(tbIndex * 32 + bitIndex);
+				Board board = indexToBoard<true>(tbIndex * 32 + bitIndex); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
+				//if (tbIndex == 3364 && bitIndex == 5)
+				//	board.print();
+				assert(!board.isWinInOne<true>(invCombinedMoveBoardFlip));
 				
 				U64 scan = board.bbp[1];
 				while (scan) {
@@ -121,8 +150,8 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, U64 thisThread, U64 
 					U64 pp = _tzcnt_u64(sourcePiece);
 					for (U64 cardSelect = 0; cardSelect < 2; cardSelect++) {
 						const MoveBoard& moveBoard = *moveBoards[cardSelect];
+						U64 land = moveBoard[pp] & ~board.bbp[1];
 						const TableBaseRow& targetRow = *targetRows[cardSelect];
-						U64 land = moveBoard[pp];
 						while(land) {
 							U64 landPiece = land & -land;
 							assert((landPiece & board.bbk[0]) == 0);
@@ -131,14 +160,18 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, U64 thisThread, U64 
 								.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
 								.bbk = { board.bbk[0], sourcePiece == board.bbk[1] ? landPiece : board.bbk[1] },
 							};
-							U64 targetIndex = boardToIndex<false>(targetBoard);
+							//if (tbIndex == 3364 && bitIndex == 5)
+							//	targetBoard.print();
+							assert(targetBoard.bbk[1] != 1 << PTEMPLE[1]);
+							U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
 							if ((targetRow[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) == 0)
 								goto notWin;
 						}
 					}
 				}
 
-				row[tbIndex].fetch_or(0x100000001ULL << bitIndex, std::memory_order_relaxed);
+				entry.fetch_or(0x100000001ULL << bitIndex, std::memory_order_relaxed);
+				// todo: set all states with p0 to move that have the option to move to this state
 				notWin: ;
 			}
 		}
