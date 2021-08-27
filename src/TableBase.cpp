@@ -158,8 +158,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, U64 thisThread, U64 
 									.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
 									.bbk = { board.bbk[0], sourcePiece == board.bbk[1] ? landPiece : board.bbk[1] },
 								};
-								//if (tbIndex == 3364 && bitIndex == 5)
-								//	targetBoard.print();
+
 								assert(targetBoard.bbk[1] != 1 << PTEMPLE[1]);
 								U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
 								if ((targetRow[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) == 0)
