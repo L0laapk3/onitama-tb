@@ -11,6 +11,8 @@
 #include <chrono>
 #include <iostream>
 #include <cassert>
+#include <immintrin.h>
+#include <x86intrin.h>
 
 
 constexpr bool COUNT_BOARDS = true;

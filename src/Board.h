@@ -7,7 +7,7 @@
 
 
 
-constexpr std::array<U64, 2> PTEMPLE = { 2, 22 };
+constexpr std::array<U64, 2> PTEMPLE = { 22, 2 };
 
 class Board {
 public:
