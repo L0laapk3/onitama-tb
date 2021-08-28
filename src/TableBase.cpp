@@ -154,7 +154,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 					Board board = indexToBoard<true>(tbIndex * 32 + bitIndex); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
 					assert(!board.isWinInOne<true>(invCombinedMoveBoardFlip));
 					if (!board.isTempleWinInOne<false>(combinedMoveBoardFlip)) {
-
+						bool kingInDanger = board.isTakeWinInOne<false>(combinedMoveBoardFlip);
 						U64 scan = board.bbp[1];
 						while (scan) {
 							U64 sourcePiece = scan & -scan;
@@ -164,7 +164,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							#pragma unroll
 							for (U64 cardSelect = 0; cardSelect < 2; cardSelect++) {
 								const MoveBoard& moveBoard = *moveBoards[cardSelect];
-								U64 land = moveBoard[pp] & ~board.bbp[1];
+								U64 land = moveBoard[pp] & (kingInDanger && sourcePiece != board.bbk[1] ? board.bbp[0] : ~board.bbp[1]);
 								const TableBaseRow& targetRow = *targetRows[cardSelect];
 								while (land) {
 									U64 landPiece = land & -land;
