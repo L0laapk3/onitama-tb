@@ -124,6 +124,7 @@ void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& 
 }
 
 
+
 // iterate over unresolved states to find p0 wins with p1 to move. Check if all possible p1 moves result in wins for p0.
 template<bool depth2>
 void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter) {
@@ -154,7 +155,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 					Board board = indexToBoard<true>(tbIndex * 32 + bitIndex); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
 					assert(!board.isWinInOne<true>(invCombinedMoveBoardFlip));
 					if (!board.isTempleWinInOne<false>(combinedMoveBoardFlip)) {
-						bool kingInDanger = board.isTakeWinInOne<false>(combinedMoveBoardFlip);
+						U64 kingThreatenPawns = board.isTakeWinInOne<false>(combinedMoveBoardFlip);
 						U64 scan = board.bbp[1];
 						while (scan) {
 							U64 sourcePiece = scan & -scan;
@@ -164,7 +165,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							#pragma unroll
 							for (U64 cardSelect = 0; cardSelect < 2; cardSelect++) {
 								const MoveBoard& moveBoard = *moveBoards[cardSelect];
-								U64 land = moveBoard[pp] & (kingInDanger && sourcePiece != board.bbk[1] ? board.bbp[0] : ~board.bbp[1]);
+								U64 land = moveBoard[pp] & (kingThreatenPawns && sourcePiece != board.bbk[1] ? kingThreatenPawns : ~board.bbp[1]);
 								const TableBaseRow& targetRow = *targetRows[cardSelect];
 								while (land) {
 									U64 landPiece = land & -land;
@@ -194,8 +195,12 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 					// all p1 moves result in win for p0. mark state as won for p0
 					entry.fetch_or(0x100000001ULL << bitIndex, std::memory_order_relaxed);
 					// also mark all states with p0 to move that have the option of moving to this board
-					{
-						bool uncaptureAllowed = _popcnt64(board.bbp[1]) < TB_MEN / 2; // todo: template this?
+					
+					#pragma unroll
+					for (U64 uncapture = 0; uncapture < 2; uncapture++) {
+						if (uncapture &&  _popcnt64(board.bbp[1]) >= TB_MEN / 2)
+							break;
+							
 						U64 scan = board.bbp[0];
 						while (scan) {
 							U64 sourcePiece = scan & -scan;
@@ -209,20 +214,15 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							while (land) {
 								U64 landPiece = land & -land;
 								land &= land - 1;
+								Board targetBoard{
+									.bbp = { bbp | landPiece, board.bbp[1] | (uncapture ? sourcePiece : 0) },
+									.bbk = { kingMove ? landPiece : board.bbk[0], board.bbk[1] },
+								};
+								U64 targetIndex = boardToIndex<false>(targetBoard);
 								#pragma unroll
-								for (U64 uncapture = 0; uncapture < 2; uncapture++) {
-									if (uncapture && !uncaptureAllowed)
-										break;
-									Board targetBoard{
-										.bbp = { bbp | landPiece, board.bbp[1] | (uncapture ? sourcePiece : 0) },
-										.bbk = { kingMove ? landPiece : board.bbk[0], board.bbk[1] },
-									};
-									U64 targetIndex = boardToIndex<false>(targetBoard);
-									#pragma unroll
-									for (U64 cardSelect = 0; cardSelect < 2; cardSelect++) {
-										// i++;
-										(*p0ReverseTargetRows[cardSelect])[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
-									}
+								for (U64 cardSelect = 0; cardSelect < 2; cardSelect++) {
+									// i++;
+									(*p0ReverseTargetRows[cardSelect])[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 								}
 							}
 						}

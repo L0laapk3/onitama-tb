@@ -19,7 +19,7 @@ public:
 	template <U64 player>
 	bool inline isTempleWinInOne(const MoveBoard& inverseMovement);
 	template <U64 player>
-	bool inline isTakeWinInOne(const MoveBoard& inverseMovement);
+	U64 inline isTakeWinInOne(const MoveBoard& inverseMovement);
 	template <U64 player>
 	bool inline isWinInOne(const MoveBoard& inverseMovement);
 
@@ -36,7 +36,7 @@ bool inline Board::isTempleWinInOne(const MoveBoard& reverseMoveBoard) {
 
 
 template <U64 player>
-bool inline Board::isTakeWinInOne(const MoveBoard& reverseMoveBoard) {
+U64 inline Board::isTakeWinInOne(const MoveBoard& reverseMoveBoard) {
 	U64 pk = _tzcnt_u64(bbk[1-player]);
 	return reverseMoveBoard[pk] & bbp[player];
 }
