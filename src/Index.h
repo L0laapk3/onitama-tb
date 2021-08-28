@@ -70,15 +70,15 @@ constexpr auto OFFSETS_SUB_EMPTY = [](){
 			U64 offset = OFFSETS[p0c][p1c];
 
 			// when not all pieces are on the board, lzcnt/tzcnt returns 64. We include this here at compile-time in the offset tables.
-			if (p0c < 4) offset -= KINGSMULT * PIECES1MULT[p0c][p1c] * 64 * 63 * 62 * 61 / 24;
-			if (p0c < 3) offset -= KINGSMULT * PIECES1MULT[p0c][p1c] * 64 * 63 * 62 / 6;
-			if (p0c < 2) offset -= KINGSMULT * PIECES1MULT[p0c][p1c] * 64 * 63 / 2;
-			if (p0c < 1) offset -= KINGSMULT * PIECES1MULT[p0c][p1c] * 64;
+			if (p0c < 4) offset -= 64 * 63 * 62 * 61 / 24;
+			if (p0c < 3) offset -= 64 * 63 * 62 / 6;
+			if (p0c < 2) offset -= 64 * 63 / 2;
+			if (p0c < 1) offset -= 64;
 
-			if (p1c < 4) offset -= KINGSMULT * 64 * 63 * 62 * 61 / 24;
-			if (p1c < 3) offset -= KINGSMULT * 64 * 63 * 62 / 6;
-			if (p1c < 2) offset -= KINGSMULT * 64 * 63 / 2;
-			if (p1c < 1) offset -= KINGSMULT * 64;
+			if (p1c < 4) offset -= PIECES0MULT[p0c] * 64 * 63 * 62 * 61 / 24;
+			if (p1c < 3) offset -= PIECES0MULT[p0c] * 64 * 63 * 62 / 6;
+			if (p1c < 2) offset -= PIECES0MULT[p0c] * 64 * 63 / 2;
+			if (p1c < 1) offset -= PIECES0MULT[p0c] * 64;
 
 			a[p0c][p1c] = offset;
 		}
@@ -265,11 +265,8 @@ inline U64 boardToIndex(Board board) {
 
 	U64 r = 0;
 
-	r *= PIECES0MULT[pp0cnt];
-	U64 rp0 = ip0p3 * (ip0p3-1) * (ip0p3-2) * (ip0p3-3);
-	rp0    += ip0p2 * (ip0p2-1) * (ip0p2-2) * 4;
-	rp0    += ip0p1 * (ip0p1-1) * 12;
-	r += rp0 / 24 + ip0p0;
+	r *= KINGSMULT;
+	r += rk;
 
 	r *= PIECES1MULT[pp0cnt][pp1cnt];
 	U64 rp1 = ip1p3 * (ip1p3-1) * (ip1p3-2) * (ip1p3-3);
@@ -277,8 +274,11 @@ inline U64 boardToIndex(Board board) {
 	rp1    += ip1p1 * (ip1p1-1) * 12;
 	r += rp1 / 24 + ip1p0;
 
-	r *= KINGSMULT;
-	r += rk;
+	r *= PIECES0MULT[pp0cnt];
+	U64 rp0 = ip0p3 * (ip0p3-1) * (ip0p3-2) * (ip0p3-3);
+	rp0    += ip0p2 * (ip0p2-1) * (ip0p2-2) * 4;
+	rp0    += ip0p1 * (ip0p1-1) * 12;
+	r += rp0 / 24 + ip0p0;
 
 	r += offset;
 	assert(r < TB_ROW_SIZE);
@@ -298,11 +298,10 @@ FromIndexHalfReturn inline fromIndexHelper(U64 index) {
 	constexpr U64 p0mult = PIECES0MULT[p0c];
 	constexpr U64 p1mult = PIECES1MULT[p0c][p1c];
 
-	U64 ik = index % KINGSMULT;
-	index /= KINGSMULT;
+	U64 ip0 = index % p0mult;
+	index /= p0mult;
 	U64 ip1 = index % p1mult;
-	index /= p1mult;
-	U64 ip0 = index;
+	U64 ik = index / p1mult;
 
 	// if (ik == 0)
 	// 	std::cout << p0c << " " << p1c << " " << ik << " " << ip0 << " " << ip1 << std::endl;
