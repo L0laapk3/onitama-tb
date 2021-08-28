@@ -16,7 +16,8 @@
 
 
 constexpr bool COUNT_BOARDS = true;
-constexpr U64 NUM_CHUNKS = 8192;
+constexpr U64 NUM_CHUNKS_PER_CARD = 8192;
+constexpr U64 NUM_CHUNKS = NUM_CHUNKS_PER_CARD * 30;
 
 
 // you can use a vector of atomics but you cant perform any actions that rely on its members being movable, such as resizing it, push_back etc.
@@ -85,14 +86,14 @@ void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& 
 		if (currChunk >= NUM_CHUNKS)
 			return;
 
-		for (U64 cardI = 0; cardI < 30; cardI++) { // naive way
+		for (U64 cardI = 30 * currChunk / NUM_CHUNKS; cardI < 30 * (currChunk + NUM_CHUNKS_PER_CARD) / NUM_CHUNKS; cardI++) { // naive way
 			auto permutation = CARDS_PERMUTATIONS[cardI];
 			MoveBoard combinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
 			// std::cout << cardI << " " << (U32)permutation.playerCards[0][0] << " " << (U32)permutation.playerCards[0][1] << std::endl;
 			// print(combinedMoveBoardReverse);
 
 			auto& row = tb[cardI];
-			for (U64 index = row.size() * currChunk / NUM_CHUNKS * 32; index < std::min(row.size() * (currChunk + 1) / NUM_CHUNKS * 32, TB_ROW_SIZE); index++) {
+			for (U64 index = row.size() * (currChunk % NUM_CHUNKS_PER_CARD) / NUM_CHUNKS_PER_CARD * 32; index < std::min(row.size() * ((currChunk % NUM_CHUNKS_PER_CARD) + 1) / NUM_CHUNKS_PER_CARD * 32, TB_ROW_SIZE); index++) {
 				auto board = indexToBoard<false>(index);
 
 				if (board.isWinInOne<false>(combinedMoveBoardFlip)) {
@@ -129,7 +130,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 		if (currChunk >= NUM_CHUNKS)
 			return;
 		// check if all P1 moves lead to a victory
-		for (U64 cardI = 0; cardI < 30; cardI++) { // naive way
+		for (U64 cardI = 30 * currChunk / NUM_CHUNKS; cardI < 30 * (currChunk + NUM_CHUNKS_PER_CARD) / NUM_CHUNKS; cardI++) { // naive way
 
 			U64 invCardI = CARDS_INVERT[cardI];
 			auto& row = tb[invCardI];
@@ -143,7 +144,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 			const MoveBoard& p0ReverseMoveBoard = cards.moveBoardsReverse[permutation.sideCard];
 			const std::array<TableBaseRow*, 2> p0ReverseTargetRows{ &tb[CARDS_SWAP[cardI][0][0]], &tb[CARDS_SWAP[cardI][0][1]] };
 
-			for (U64 tbIndex = row.size() * currChunk / NUM_CHUNKS; tbIndex < row.size() * (currChunk + 1) / NUM_CHUNKS; tbIndex++) {
+			for (U64 tbIndex = row.size() * (currChunk % NUM_CHUNKS_PER_CARD) / NUM_CHUNKS_PER_CARD; tbIndex < row.size() * ((currChunk % NUM_CHUNKS_PER_CARD) + 1) / NUM_CHUNKS_PER_CARD; tbIndex++) {
 				auto& entry = row[tbIndex];
 				for (U32 bits = ~entry; bits; bits &= bits - 1) {
 					U64 bitIndex = _tzcnt_u64(bits);
@@ -197,14 +198,16 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							while (land) {
 								U64 landPiece = land & -land;
 								land &= land - 1;
-#pragma unroll
-								for (U64 uncapture = 0; uncapture < 1 + uncaptureAllowed; uncapture++) {
+								#pragma unroll
+								for (U64 uncapture = 0; uncapture < 2; uncapture++) {
+									if (uncapture && !uncaptureAllowed)
+										break;
 									Board targetBoard{
 										.bbp = { bbp | landPiece, board.bbp[1] | (uncapture ? sourcePiece : 0) },
 										.bbk = { kingMove ? landPiece : board.bbk[0], board.bbk[1] },
 									};
 									U64 targetIndex = boardToIndex<false>(targetBoard);
-#pragma unroll
+									#pragma unroll
 									for (U64 cardSelect = 0; cardSelect < 2; cardSelect++) {
 										// i++;
 										(*p0ReverseTargetRows[cardSelect])[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
