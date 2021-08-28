@@ -16,7 +16,7 @@
 
 
 constexpr bool COUNT_BOARDS = true;
-constexpr U64 NUM_CHUNKS_PER_CARD = 8192;
+constexpr U64 NUM_CHUNKS_PER_CARD = TB_ROW_SIZE / 4096;
 constexpr U64 NUM_CHUNKS = NUM_CHUNKS_PER_CARD * 30;
 
 
@@ -27,6 +27,7 @@ typedef std::array<TableBaseRow, 30> TableBase;
 
 
 void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter);
+template<bool depth2>
 void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter);
 
 TableBase generateTB(const CardsInfo& cards) {
@@ -51,7 +52,7 @@ TableBase generateTB(const CardsInfo& cards) {
 		atomic_thread_fence(std::memory_order_release);
 		std::atomic<U64> chunkCounter = 0;
 		for (U64 i = 0; i < numThreads; i++)
-			threads[i] = std::thread(depth == 1 ? &generateFirstWins : &singleDepthPass, std::ref(cards), std::ref(tb), std::ref(chunkCounter));
+			threads[i] = std::thread(depth == 1 ? &generateFirstWins : depth == 2 ? &singleDepthPass<true> : &singleDepthPass<false>, std::ref(cards), std::ref(tb), std::ref(chunkCounter));
 		for (auto& thread : threads)
 			thread.join();
 		atomic_thread_fence(std::memory_order_acquire);
@@ -66,11 +67,11 @@ TableBase generateTB(const CardsInfo& cards) {
 			break;
 		cnt -= totalBoards;
 		totalBoards += cnt;
-		printf("depth %3llu: %10llu boards in %.3fs\n", depth, cnt, time);
+		printf("iter %3llu: %1llu boards in %.3fs\n", depth, cnt, time);
 		depth++;
 	}
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
-	printf("found %12llu boards in %.3fs/%.3fs\n", totalBoards, totalTime, totalInclusiveTime);
+	printf("found %llu boards in %.3fs/%.3fs\n", totalBoards, totalTime, totalInclusiveTime);
 
 	return tb;
 }
@@ -124,6 +125,7 @@ void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& 
 
 
 // iterate over unresolved states to find p0 wins with p1 to move. Check if all possible p1 moves result in wins for p0.
+template<bool depth2>
 void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter) {
 	while (true) {
 		U64 currChunk = chunkCounter++;
@@ -139,6 +141,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 			const std::array<const MoveBoard*, 2> moveBoards{ &cards.moveBoardsReverse[permutation.playerCards[1][0]], &cards.moveBoardsReverse[permutation.playerCards[1][1]] };
 			MoveBoard invCombinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[1][0]], cards.moveBoardsForward[permutation.playerCards[1][1]]);
 			const std::array<TableBaseRow*, 2> targetRows{ &tb[CARDS_SWAP[cardI][1][0]], &tb[CARDS_SWAP[cardI][1][1]] };
+			const MoveBoard combinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
 
 			// moveboard for reversing p0
 			const MoveBoard& p0ReverseMoveBoard = cards.moveBoardsReverse[permutation.sideCard];
@@ -158,6 +161,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							scan &= scan - 1;
 							U64 bbp = board.bbp[1] - sourcePiece;
 							U64 pp = _tzcnt_u64(sourcePiece);
+							#pragma unroll
 							for (U64 cardSelect = 0; cardSelect < 2; cardSelect++) {
 								const MoveBoard& moveBoard = *moveBoards[cardSelect];
 								U64 land = moveBoard[pp] & ~board.bbp[1];
@@ -170,11 +174,18 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 										.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
 										.bbk = { board.bbk[0], sourcePiece == board.bbk[1] ? landPiece : board.bbk[1] },
 									};
-
 									assert(targetBoard.bbk[1] != 1 << PTEMPLE[1]);
-									U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
-									if ((targetRow[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) == 0)
+
+									if (!targetBoard.isWinInOne<false>(combinedMoveBoardFlip)) {
+
+										if (!depth2) {
+											U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
+											if ((targetRow[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
+												continue;
+										}
+										
 										goto notWin;
+									}
 								}
 							}
 						}
