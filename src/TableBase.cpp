@@ -67,7 +67,7 @@ TableBase generateTB(const CardsInfo& cards) {
 			break;
 		cnt -= totalBoards;
 		totalBoards += cnt;
-		printf("iter %3llu: %1llu boards in %.3fs\n", depth, cnt, time);
+		printf("iter %3llu: %11llu boards in %.3fs\n", depth, cnt, time);
 		depth++;
 	}
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
@@ -152,8 +152,8 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 				for (U32 bits = ~entry; bits; bits &= bits - 1) {
 					U64 bitIndex = _tzcnt_u64(bits);
 					Board board = indexToBoard<true>(tbIndex * 32 + bitIndex); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
-					{
-						assert(!board.isWinInOne<true>(invCombinedMoveBoardFlip));
+					assert(!board.isWinInOne<true>(invCombinedMoveBoardFlip));
+					if (!board.isTempleWinInOne<false>(combinedMoveBoardFlip)) {
 
 						U64 scan = board.bbp[1];
 						while (scan) {
@@ -176,7 +176,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 									};
 									assert(targetBoard.bbk[1] != 1 << PTEMPLE[1]);
 
-									if (!targetBoard.isWinInOne<false>(combinedMoveBoardFlip)) {
+									if (!targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip)) {
 
 										if (!depth2) {
 											U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
