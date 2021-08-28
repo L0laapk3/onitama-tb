@@ -7,7 +7,10 @@
 
 int main(int, char**) {
 
-    // testIndexing();
+    if (0) {
+        testIndexing();
+        return 0;
+    }
     
     constexpr CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB };
     generateTB(CARDS);
