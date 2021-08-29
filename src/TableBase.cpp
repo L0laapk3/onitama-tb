@@ -130,6 +130,11 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 		MoveBoard invCombinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[1][0]], cards.moveBoardsForward[permutation.playerCards[1][1]]);
 		const std::array<TableBaseRow*, 2> targetRows{ &tb[CARDS_SWAP[cardI][1][0]], &tb[CARDS_SWAP[cardI][1][1]] };
 		const MoveBoard combinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
+		
+		const std::array<const MoveBoard, 2> combinedMoveBoardsFlipUnmove{
+			combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][1]]),
+			combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][0]]),
+		};
 
 		// moveboard for reversing p0
 		const MoveBoard& p0ReverseMoveBoard = cards.moveBoardsReverse[permutation.sideCard];
@@ -205,11 +210,17 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 								.bbp = { bbp | landPiece, board.bbp[1] | (uncapture ? sourcePiece : 0) },
 								.bbk = { kingMove ? landPiece : board.bbk[0], board.bbk[1] },
 							};
-							U64 targetIndex = boardToIndex<false>(targetBoard);
-							#pragma unroll
-							for (U64 cardSelect = 0; cardSelect < 2; cardSelect++) {
-								// i++;
-								(*p0ReverseTargetRows[cardSelect])[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
+							std::array<bool, 2> areWinInOnes{ targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove[0]), targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove[1]) };
+
+							if (!areWinInOnes[0] || !areWinInOnes[1]) {
+								U64 targetIndex = boardToIndex<false>(targetBoard);
+								#pragma unroll
+								for (U64 cardSelect = 0; cardSelect < 2; cardSelect++) {
+									if (!areWinInOnes[cardSelect]) {
+										// i++;
+										(*p0ReverseTargetRows[cardSelect])[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
+									}
+								}
 							}
 						}
 					}
