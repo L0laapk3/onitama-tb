@@ -104,6 +104,8 @@ constexpr std::array<std::array<U8, 12>, 5> CARDS_USED_IN = {{
 	{ 8, 10, 11, 14, 16, 17, 20, 22, 23, 26, 28, 29 },
 }};
 
+constexpr std::array<U8, 10> CARDS_P0_PAIRS = {0, 1, 2, 3, 4, 5, 8, 10, 11, 17 };
+
 
 
 typedef std::array<U32, 25> MoveBoard;
