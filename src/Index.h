@@ -380,10 +380,4 @@ Board inline indexToBoard(U64 index) {
 }
 
 
-template U64 boardToIndex<false>(Board board);
-template U64 boardToIndex<true>(Board board);
-template Board indexToBoard<false>(U64 index);
-template Board indexToBoard<true>(U64 index);
-
-
 void testIndexing();
