@@ -16,6 +16,8 @@
 
 
 constexpr bool COUNT_BOARDS = true;
+
+
 constexpr U64 NUM_CHUNKS_PER_CARD = TB_ROW_SIZE / 4096;
 constexpr U64 NUM_CHUNKS_PER_PAIR = NUM_CHUNKS_PER_CARD * 3;
 constexpr U64 NUM_CHUNKS = NUM_CHUNKS_PER_CARD * 30;
@@ -27,9 +29,9 @@ typedef std::vector<std::atomic<U64>> TableBaseRow;
 typedef std::array<TableBaseRow, 30> TableBase;
 
 
-void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter);
+void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
 template<bool depth2>
-void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter);
+void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
 
 TableBase generateTB(const CardsInfo& cards) {
 	TableBase tb;
@@ -50,23 +52,29 @@ TableBase generateTB(const CardsInfo& cards) {
 	while (true) {
 		auto beginTime = std::chrono::steady_clock::now();
 
+		bool modified = false;
 		std::atomic<U64> chunkCounter = 0;
 		for (U64 i = 0; i < numThreads; i++)
-			threads[i] = std::thread(depth == 1 ? &generateFirstWins : depth == 2 ? &singleDepthPass<true> : &singleDepthPass<false>, std::ref(cards), std::ref(tb), std::ref(chunkCounter));
+			threads[i] = std::thread(depth == 1 ? &generateFirstWins : depth == 2 ? &singleDepthPass<true> : &singleDepthPass<false>, std::ref(cards), std::ref(tb), std::ref(chunkCounter), std::ref(modified));
 		for (auto& thread : threads)
 			thread.join();
 
 		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
 		totalTime += time;
 		U64 cnt = cnt_0;
-		for (auto& row : tb)
-			for (auto& val : row)
-				cnt += _popcnt32(val);
-		if (cnt == totalBoards)
+		if (COUNT_BOARDS || !modified) {
+			for (auto& row : tb)
+				for (auto& val : row)
+					cnt += _popcnt32(val);
+			cnt -= totalBoards;
+			totalBoards += cnt;
+		}
+		if (!modified)
 			break;
-		cnt -= totalBoards;
-		totalBoards += cnt;
-		printf("iter %3llu: %11llu boards in %.3fs\n", depth, cnt, time);
+		if (COUNT_BOARDS)
+			printf("iter %3llu: %11llu boards in %.3fs\n", depth, cnt, time);
+		else
+			printf("iter %3llu in %.3fs\n", depth, time);
 		depth++;
 	}
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
@@ -80,11 +88,12 @@ TableBase generateTB(const CardsInfo& cards) {
 
 
 // marks all p0 to move win in 1 states.
-void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter) {
+void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified) {
+	modified = true;
 	while (true) {
 		U64 currChunk = chunkCounter.fetch_add(1, std::memory_order_relaxed);
 		if (currChunk >= NUM_CHUNKS)
-			return;
+			break;
 
 		U64 pairI = 10 * currChunk / NUM_CHUNKS;
 		U64 cardI = CARDS_P0_PAIRS[pairI];
@@ -104,6 +113,7 @@ void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& 
 			U64 bits = 0;
 			#pragma unroll
 			for (U64 bitIndex = 0; bitIndex < (tbIndex < (TB_ROW_SIZE + 31) / 32 - 1 ? 32 : ((TB_ROW_SIZE + 31) % 32) + 1); bitIndex++) {
+			// for (U64 bitIndex = 0; bitIndex < 32; bitIndex++) {
 				auto board = indexToBoard<false>(tbIndex * 32 + bitIndex);
 				if (board.isWinInOne<false>(combinedMoveBoardFlip))
 					bits |= 0x100000001ULL << bitIndex;
@@ -119,11 +129,12 @@ void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& 
 
 // iterate over unresolved states to find p0 wins with p1 to move. Check if all possible p1 moves result in wins for p0.
 template<bool depth2>
-void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter) {
+void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified) {
+	bool mod = false;
 	while (true) {
 		U64 currChunk = chunkCounter++;
 		if (currChunk >= NUM_CHUNKS)
-			return;
+			break;
 		// check if all P1 moves lead to a victory
 		U64 cardI = 30 * currChunk / NUM_CHUNKS;
 
@@ -295,8 +306,12 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 			notWin:;
 			}
 
-			if (newP1Wins)
+			if (newP1Wins) {
 				entry.fetch_or(newP1Wins, std::memory_order_relaxed);
+				mod = true;
+			}
 		}
 	}
+	if (mod)
+		modified = true;
 }
