@@ -15,7 +15,7 @@
 #include <algorithm>
 
 
-#define TB_MEN 6
+#define TB_MEN 8
 
 
 
@@ -70,13 +70,13 @@ constexpr auto OFFSETS_SUB_EMPTY = [](){
 			U64 offset = OFFSETS[p0c][p1c];
 
 			// when not all pieces are on the board, lzcnt/tzcnt returns 64. We include this here at compile-time in the offset tables.
-			if (p0c < 4) offset -= 64 * 63 * 62 * 61 / 24;
-			if (p0c < 3) offset -= 64 * 63 * 62 / 6;
+			if (p0c < 4 && TB_MEN > 8) offset -= 64 * 63 * 62 * 61 / 24;
+			if (p0c < 3 && TB_MEN > 6) offset -= 64 * 63 * 62 / 6;
 			if (p0c < 2) offset -= 64 * 63 / 2;
 			if (p0c < 1) offset -= 64;
 
-			if (p1c < 4) offset -= PIECES0MULT[p0c] * 64 * 63 * 62 * 61 / 24;
-			if (p1c < 3) offset -= PIECES0MULT[p0c] * 64 * 63 * 62 / 6;
+			if (p1c < 4 && TB_MEN > 8) offset -= PIECES0MULT[p0c] * 64 * 63 * 62 * 61 / 24;
+			if (p1c < 3 && TB_MEN > 6) offset -= PIECES0MULT[p0c] * 64 * 63 * 62 / 6;
 			if (p1c < 2) offset -= PIECES0MULT[p0c] * 64 * 63 / 2;
 			if (p1c < 1) offset -= PIECES0MULT[p0c] * 64;
 
@@ -242,25 +242,25 @@ inline U64 boardToIndex(Board board) {
 	if (!invert) {
 		ip0p0 = _tzcnt_u64(bbpc0); // when not found, it will return 64 which is cut off by the & operation
 		ip0p1 = _tzcnt_u64(bbpc0 &= bbpc0-1);
-		ip0p2 = _tzcnt_u64(bbpc0 &= bbpc0-1);
-		ip0p3 = _tzcnt_u64(bbpc0 &= bbpc0-1);
+		if (TB_MEN > 6) ip0p2 = _tzcnt_u64(bbpc0 &= bbpc0-1);
+		if (TB_MEN > 8) ip0p3 = _tzcnt_u64(bbpc0 &= bbpc0-1);
 
 		ip1p0 = _tzcnt_u64(bbpc1);
 		ip1p1 = _tzcnt_u64(bbpc1 &= bbpc1-1);
-		ip1p2 = _tzcnt_u64(bbpc1 &= bbpc1-1);
-		ip1p3 = _tzcnt_u64(bbpc1 &= bbpc1-1);
+		if (TB_MEN > 6) ip1p2 = _tzcnt_u64(bbpc1 &= bbpc1-1);
+		if (TB_MEN > 8) ip1p3 = _tzcnt_u64(bbpc1 &= bbpc1-1);
 	} else {
 		bbpc0 <<= 41;
 		ip0p0 = _lzcnt_u64(bbpc0);
 		ip0p1 = _lzcnt_u64(bbpc0 &= ~(1ULL << 63 >> ip0p0));
-		ip0p2 = _lzcnt_u64(bbpc0 &= ~(1ULL << 63 >> ip0p1));
-		ip0p3 = _lzcnt_u64(bbpc0 &= ~(1ULL << 63 >> ip0p2));
+		if (TB_MEN > 6) ip0p2 = _lzcnt_u64(bbpc0 &= ~(1ULL << 63 >> ip0p1));
+		if (TB_MEN > 8) ip0p3 = _lzcnt_u64(bbpc0 &= ~(1ULL << 63 >> ip0p2));
 
 		bbpc1 <<= 41 + pp0cnt;
 		ip1p0 = _lzcnt_u64(bbpc1);
 		ip1p1 = _lzcnt_u64(bbpc1 &= ~(1ULL << 63 >> ip1p0));
-		ip1p2 = _lzcnt_u64(bbpc1 &= ~(1ULL << 63 >> ip1p1));
-		ip1p3 = _lzcnt_u64(bbpc1 &= ~(1ULL << 63 >> ip1p2));
+		if (TB_MEN > 6) ip1p2 = _lzcnt_u64(bbpc1 &= ~(1ULL << 63 >> ip1p1));
+		if (TB_MEN > 8) ip1p3 = _lzcnt_u64(bbpc1 &= ~(1ULL << 63 >> ip1p2));
 	}
 
 	U64 r = 0;
@@ -269,15 +269,17 @@ inline U64 boardToIndex(Board board) {
 	r += rk;
 
 	r *= PIECES1MULT[pp0cnt][pp1cnt];
-	U64 rp1 = ip1p3 * (ip1p3-1) * (ip1p3-2) * (ip1p3-3);
-	rp1    += ip1p2 * (ip1p2-1) * (ip1p2-2) * 4;
-	rp1    += ip1p1 * (ip1p1-1) * 12;
+	U64 rp1 = 0;
+	if (TB_MEN > 8) rp1 += ip1p3 * (ip1p3-1) * (ip1p3-2) * (ip1p3-3);
+	if (TB_MEN > 6) rp1 += ip1p2 * (ip1p2-1) * (ip1p2-2) * 4;
+	rp1 += ip1p1 * (ip1p1-1) * 12;
 	r += rp1 / 24 + ip1p0;
 
 	r *= PIECES0MULT[pp0cnt];
-	U64 rp0 = ip0p3 * (ip0p3-1) * (ip0p3-2) * (ip0p3-3);
-	rp0    += ip0p2 * (ip0p2-1) * (ip0p2-2) * 4;
-	rp0    += ip0p1 * (ip0p1-1) * 12;
+	U64 rp0 = 0;
+	if (TB_MEN > 8) rp0 += ip0p3 * (ip0p3-1) * (ip0p3-2) * (ip0p3-3);
+	if (TB_MEN > 6) rp0 += ip0p2 * (ip0p2-1) * (ip0p2-2) * 4;
+	rp0 += ip0p1 * (ip0p1-1) * 12;
 	r += rp0 / 24 + ip0p0;
 
 	r += offset;
