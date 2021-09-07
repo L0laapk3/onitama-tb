@@ -170,7 +170,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 									.bbk = { board.bbk[0], sourcePiece == board.bbk[1] ? landPiece : board.bbk[1] },
 								};
 
-								if (!targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip)) {
+								if (sourcePiece != board.bbk[1] || !targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip)) {
 
 									if (!depth2) {
 										U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
@@ -192,7 +192,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 									.bbk = { board.bbk[0], sourcePiece == board.bbk[1] ? landPiece : board.bbk[1] },
 								};
 
-								if (!targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip)) {
+								if (sourcePiece != board.bbk[1] || !targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip)) {
 
 									if (!depth2) {
 										U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
