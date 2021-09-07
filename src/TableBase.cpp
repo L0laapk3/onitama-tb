@@ -132,9 +132,11 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 		auto& row = tb[invCardI];
 		auto permutation = CARDS_PERMUTATIONS[cardI];
 		// forward moves for p1 so reverse moveboards
-		const std::array<const MoveBoard*, 2> moveBoards{ &cards.moveBoardsReverse[permutation.playerCards[1][0]], &cards.moveBoardsReverse[permutation.playerCards[1][1]] };
+		const MoveBoard& moveBoard0 = cards.moveBoardsReverse[permutation.playerCards[1][0]];
+		const MoveBoard& moveBoard1 = cards.moveBoardsReverse[permutation.playerCards[1][1]];
 		MoveBoard invCombinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[1][0]], cards.moveBoardsForward[permutation.playerCards[1][1]]);
-		const std::array<TableBaseRow*, 2> targetRows{ &tb[CARDS_SWAP[cardI][1][0]], &tb[CARDS_SWAP[cardI][1][1]] };
+		TableBaseRow& targetRow0 = tb[CARDS_SWAP[cardI][1][0]];
+		TableBaseRow& targetRow1 = tb[CARDS_SWAP[cardI][1][1]];
 		const MoveBoard combinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
 		
 		const MoveBoard combinedMoveBoardsFlipUnmove0 = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
@@ -159,11 +161,8 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 						scan &= scan - 1;
 						U64 bbp = board.bbp[1] - sourcePiece;
 						U64 pp = _tzcnt_u64(sourcePiece);
-						#pragma unroll
-						for (U64 cardSelect = 0; cardSelect < 2; cardSelect++) {
-							const MoveBoard& moveBoard = *moveBoards[cardSelect];
-							U64 land = moveBoard[pp] & (kingThreatenPawns && sourcePiece != board.bbk[1] ? kingThreatenPawns : ~board.bbp[1]);
-							const TableBaseRow& targetRow = *targetRows[cardSelect];
+						{
+							U64 land = moveBoard0[pp] & (kingThreatenPawns && sourcePiece != board.bbk[1] ? kingThreatenPawns : ~board.bbp[1]);
 							while (land) {
 								U64 landPiece = land & -land;
 								assert((landPiece & board.bbk[0]) == 0);
@@ -178,7 +177,31 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 
 									if (!depth2) {
 										U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
-										if ((targetRow[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
+										if ((targetRow0[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
+											continue;
+									}
+									
+									goto notWin;
+								}
+							}
+						}
+						{
+							U64 land = moveBoard1[pp] & (kingThreatenPawns && sourcePiece != board.bbk[1] ? kingThreatenPawns : ~board.bbp[1]);
+							while (land) {
+								U64 landPiece = land & -land;
+								assert((landPiece & board.bbk[0]) == 0);
+								land &= land - 1;
+								Board targetBoard{
+									.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
+									.bbk = { board.bbk[0], sourcePiece == board.bbk[1] ? landPiece : board.bbk[1] },
+								};
+								assert(targetBoard.bbk[1] != 1 << PTEMPLE[1]);
+
+								if (!targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip)) {
+
+									if (!depth2) {
+										U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
+										if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
 											continue;
 									}
 									
