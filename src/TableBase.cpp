@@ -111,13 +111,20 @@ void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& 
 			__builtin_prefetch(&row1[tbIndex]);
 			__builtin_prefetch(&row2[tbIndex]);
 			U64 bits = 0;
-			#pragma unroll
-			for (U64 bitIndex = 0; bitIndex < (tbIndex < (TB_ROW_SIZE + 31) / 32 - 1 ? 32 : ((TB_ROW_SIZE + 31) % 32) + 1); bitIndex++) {
-			// for (U64 bitIndex = 0; bitIndex < 32; bitIndex++) {
-				auto board = indexToBoard<false>(tbIndex * 32 + bitIndex);
-				if (board.isWinInOne<false>(combinedMoveBoardFlip))
-					bits |= 0x100000001ULL << bitIndex;
-			}
+
+			if (tbIndex < (TB_ROW_SIZE + 31) / 32 - 1)
+				#pragma unroll
+				for (U64 bitIndex = 0; bitIndex < 32; bitIndex++) {
+					auto board = indexToBoard<false>(tbIndex * 32 + bitIndex);
+					if (board.isWinInOne<false>(combinedMoveBoardFlip))
+						bits |= 0x100000001ULL << bitIndex;
+				}
+			else
+				for (U64 bitIndex = 0; bitIndex < ((TB_ROW_SIZE + 31) % 32) + 1; bitIndex++) {
+					auto board = indexToBoard<false>(tbIndex * 32 + bitIndex);
+					if (board.isWinInOne<false>(combinedMoveBoardFlip))
+						bits |= 0x100000001ULL << bitIndex;
+				}
 			row0[tbIndex].fetch_or(bits, std::memory_order_relaxed);
 			row1[tbIndex].fetch_or(bits, std::memory_order_relaxed);
 			row2[tbIndex].fetch_or(bits, std::memory_order_relaxed);
