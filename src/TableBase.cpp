@@ -95,17 +95,23 @@ void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& 
 		// std::cout << cardI << " " << (U32)permutation.playerCards[0][0] << " " << (U32)permutation.playerCards[0][1] << std::endl;
 		// print(combinedMoveBoardReverse);
 
-		std::array<TableBaseRow*, 3> rows{ &tb[cardI], &tb[CARDS_SWAP[cardI][1][0]], &tb[CARDS_SWAP[cardI][1][1]] };
+		TableBaseRow& row0 = tb[cardI];
+		TableBaseRow& row1 = tb[CARDS_SWAP[cardI][1][0]];
+		TableBaseRow& row2 = tb[CARDS_SWAP[cardI][1][1]];
 		for (U64 tbIndex = (TB_ROW_SIZE + 31) / 32 * (currChunk % NUM_CHUNKS_PER_CARD) / NUM_CHUNKS_PER_CARD; tbIndex < (TB_ROW_SIZE + 31) / 32 * ((currChunk % NUM_CHUNKS_PER_CARD) + 1) / NUM_CHUNKS_PER_CARD; tbIndex++) {
+			__builtin_prefetch(&row0[tbIndex]);
+			__builtin_prefetch(&row1[tbIndex]);
+			__builtin_prefetch(&row2[tbIndex]);
 			U64 bits = 0;
+			#pragma unroll
 			for (U64 bitIndex = 0; bitIndex < (tbIndex < (TB_ROW_SIZE + 31) / 32 - 1 ? 32 : ((TB_ROW_SIZE + 31) % 32) + 1); bitIndex++) {
 				auto board = indexToBoard<false>(tbIndex * 32 + bitIndex);
 				if (board.isWinInOne<false>(combinedMoveBoardFlip))
 					bits |= 0x100000001ULL << bitIndex;
 			}
-			#pragma unroll
-			for (auto* row : rows)
-				(*row)[tbIndex].fetch_or(bits, std::memory_order_relaxed);
+			row0[tbIndex].fetch_or(bits, std::memory_order_relaxed);
+			row1[tbIndex].fetch_or(bits, std::memory_order_relaxed);
+			row2[tbIndex].fetch_or(bits, std::memory_order_relaxed);
 		}
 	}
 }
