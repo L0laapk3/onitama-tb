@@ -49,13 +49,11 @@ TableBase generateTB(const CardsInfo& cards) {
 	while (true) {
 		auto beginTime = std::chrono::steady_clock::now();
 
-		atomic_thread_fence(std::memory_order_release);
 		std::atomic<U64> chunkCounter = 0;
 		for (U64 i = 0; i < numThreads; i++)
 			threads[i] = std::thread(depth == 1 ? &generateFirstWins : depth == 2 ? &singleDepthPass<true> : &singleDepthPass<false>, std::ref(cards), std::ref(tb), std::ref(chunkCounter));
 		for (auto& thread : threads)
 			thread.join();
-		atomic_thread_fence(std::memory_order_acquire);
 
 		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
 		totalTime += time;
