@@ -149,6 +149,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 
 		for (U64 tbIndex = row.size() * (currChunk % NUM_CHUNKS_PER_CARD) / NUM_CHUNKS_PER_CARD; tbIndex < row.size() * ((currChunk % NUM_CHUNKS_PER_CARD) + 1) / NUM_CHUNKS_PER_CARD; tbIndex++) {
 			auto& entry = row[tbIndex];
+			U64 bitsSet = 0;
 			for (U32 bits = ~entry; bits; bits &= bits - 1) {
 				U64 bitIndex = _tzcnt_u64(bits);
 				Board board = indexToBoard<true>(tbIndex * 32 + bitIndex); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
@@ -214,7 +215,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 				}
 
 				// all p1 moves result in win for p0. mark state as won for p0
-				entry.fetch_or(0x000000001ULL << bitIndex, std::memory_order_relaxed);
+				bitsSet |= 0x000000001ULL << bitIndex;
 				// also mark all states with p0 to move that have the option of moving to this board
 						
 				U64 scan = board.bbp[0];
@@ -295,6 +296,9 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 
 			notWin:;
 			}
+
+			if (bitsSet)
+				entry.fetch_or(bitsSet, std::memory_order_relaxed);
 		}
 	}
 }

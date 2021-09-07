@@ -15,7 +15,7 @@
 #include <algorithm>
 
 
-#define TB_MEN 8
+#define TB_MEN 6
 
 
 
