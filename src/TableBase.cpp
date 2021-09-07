@@ -236,14 +236,13 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 						};
 
 						bool isWinInOne0 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove0);
+						bool isWinInOne1 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove1);
 						if (!isWinInOne0) {
 							U64 targetIndex = boardToIndex<false>(targetBoard);
-							bool isWinInOne1 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove1);
 							p0ReverseTargetRow0[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 							if (!isWinInOne1)
 								p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 						} else {
-							bool isWinInOne1 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove1);
 							if (!isWinInOne1) {
 								U64 targetIndex = boardToIndex<false>(targetBoard);
 								p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
@@ -275,14 +274,13 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							};
 							
 							bool isWinInOne0 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove0);
+							bool isWinInOne1 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove1);
 							if (!isWinInOne0) {
 								U64 targetIndex = boardToIndex<false>(targetBoard);
-								bool isWinInOne1 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove1);
 								p0ReverseTargetRow0[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 								if (!isWinInOne1)
 									p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 							} else {
-								bool isWinInOne1 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove1);
 								if (!isWinInOne1) {
 									U64 targetIndex = boardToIndex<false>(targetBoard);
 									p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
