@@ -192,38 +192,6 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 				// all p1 moves result in win for p0. mark state as won for p0
 				entry.fetch_or(0x000000001ULL << bitIndex, std::memory_order_relaxed);
 				// also mark all states with p0 to move that have the option of moving to this board
-				
-				if (_popcnt64(board.bbp[1]) < TB_MEN / 2) {
-					U64 scan = board.bbp[0];
-					while (scan) {
-						U64 sourcePiece = scan & -scan;
-						bool kingMove = sourcePiece == board.bbk[0];
-						scan &= scan - 1;
-						U64 bbp = board.bbp[0] - sourcePiece;
-						U64 pp = _tzcnt_u64(sourcePiece);
-						U64 land = p0ReverseMoveBoard[pp] & ~board.bbp[1] & ~board.bbp[0];
-						if (kingMove)
-							land &= ~(1 << PTEMPLE[0]);
-						while (land) {
-							U64 landPiece = land & -land;
-							land &= land - 1;
-							Board targetBoard{
-								.bbp = { bbp | landPiece, board.bbp[1] | sourcePiece },
-								.bbk = { kingMove ? landPiece : board.bbk[0], board.bbk[1] },
-							};
-							bool isWinInOne0 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove0);
-							bool isWinInOne1 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove1);
-
-							if (!isWinInOne0 || !isWinInOne1) {
-								U64 targetIndex = boardToIndex<false>(targetBoard);
-								if (!isWinInOne0)
-									p0ReverseTargetRow0[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
-								if (!isWinInOne1)
-									p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
-							}
-						}
-					}
-				}
 						
 				U64 scan = board.bbp[0];
 				while (scan) {
@@ -247,9 +215,9 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 						if (!isWinInOne0) {
 							U64 targetIndex = boardToIndex<false>(targetBoard);
 							bool isWinInOne1 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove1);
+							p0ReverseTargetRow0[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 							if (!isWinInOne1)
 								p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
-							p0ReverseTargetRow0[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 						} else {
 							bool isWinInOne1 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove1);
 							if (!isWinInOne1) {
@@ -257,6 +225,46 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 								p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 							}
 
+						}
+					}
+				}
+				
+				
+				if (_popcnt64(board.bbp[1]) < TB_MEN / 2) {
+					scan = board.bbp[0];
+					while (scan) {
+						U64 sourcePiece = scan & -scan;
+						bool kingMove = sourcePiece == board.bbk[0];
+						scan &= scan - 1;
+						U64 bbp = board.bbp[0] - sourcePiece;
+						U64 bbp1 = board.bbp[1] | sourcePiece;
+						U64 pp = _tzcnt_u64(sourcePiece);
+						U64 land = p0ReverseMoveBoard[pp] & ~board.bbp[1] & ~board.bbp[0];
+						if (kingMove)
+							land &= ~(1 << PTEMPLE[0]);
+						while (land) {
+							U64 landPiece = land & -land;
+							land &= land - 1;
+							Board targetBoard{
+								.bbp = { bbp | landPiece, bbp1 },
+								.bbk = { kingMove ? landPiece : board.bbk[0], board.bbk[1] },
+							};
+							
+							bool isWinInOne0 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove0);
+							if (!isWinInOne0) {
+								U64 targetIndex = boardToIndex<false>(targetBoard);
+								bool isWinInOne1 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove1);
+								p0ReverseTargetRow0[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
+								if (!isWinInOne1)
+									p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
+							} else {
+								bool isWinInOne1 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove1);
+								if (!isWinInOne1) {
+									U64 targetIndex = boardToIndex<false>(targetBoard);
+									p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
+								}
+
+							}
 						}
 					}
 				}
