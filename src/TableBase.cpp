@@ -83,7 +83,7 @@ TableBase generateTB(const CardsInfo& cards) {
 // marks all p0 to move win in 1 states.
 void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter) {
 	while (true) {
-		U64 currChunk = chunkCounter++;
+		U64 currChunk = chunkCounter.fetch_add(1, std::memory_order_relaxed);
 		if (currChunk >= NUM_CHUNKS)
 			return;
 
@@ -210,17 +210,15 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 								.bbp = { bbp | landPiece, board.bbp[1] | (uncapture ? sourcePiece : 0) },
 								.bbk = { kingMove ? landPiece : board.bbk[0], board.bbk[1] },
 							};
-							std::array<bool, 2> areWinInOnes{ targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove[0]), targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove[1]) };
+							bool isWinInOne0 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove[0]);
+							bool isWinInOne1 = targetBoard.isWinInOne<false>(combinedMoveBoardsFlipUnmove[1]);
 
-							if (!areWinInOnes[0] || !areWinInOnes[1]) {
+							if (!isWinInOne0 || !isWinInOne1) {
 								U64 targetIndex = boardToIndex<false>(targetBoard);
-								#pragma unroll
-								for (U64 cardSelect = 0; cardSelect < 2; cardSelect++) {
-									if (!areWinInOnes[cardSelect]) {
-										// i++;
-										(*p0ReverseTargetRows[cardSelect])[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
-									}
-								}
+								if (!isWinInOne0)
+									(*p0ReverseTargetRows[0])[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
+								if (!isWinInOne1)
+									(*p0ReverseTargetRows[1])[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 							}
 						}
 					}
