@@ -213,7 +213,7 @@ constexpr auto TABLE_TWOPAWNS_INV = GENERATE_PAWN_TABLE<2, true>();
 
 
 template <bool invert>
-inline U64 boardToIndex(Board board) {
+inline U64 boardToIndex(Board board) __attribute__((always_inline)) {
 	if (invert) {
 		std::swap(board.bbp[0], board.bbp[1]);
 		std::swap(board.bbk[0], board.bbk[1]);
@@ -317,7 +317,7 @@ FromIndexHalfReturn inline fromIndexHelper(U64 index) {
 }
 
 template<bool invert>
-Board inline indexToBoard(U64 index) {
+Board inline indexToBoard(U64 index) __attribute__((always_inline)) {
 
 	FromIndexHalfReturn bbStuff;
 	if (0);
