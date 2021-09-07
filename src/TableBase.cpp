@@ -17,6 +17,7 @@
 
 constexpr bool COUNT_BOARDS = true;
 constexpr U64 NUM_CHUNKS_PER_CARD = TB_ROW_SIZE / 4096;
+constexpr U64 NUM_CHUNKS_PER_PAIR = NUM_CHUNKS_PER_CARD * 3;
 constexpr U64 NUM_CHUNKS = NUM_CHUNKS_PER_CARD * 30;
 
 
@@ -96,7 +97,7 @@ void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& 
 		TableBaseRow& row0 = tb[cardI];
 		TableBaseRow& row1 = tb[CARDS_SWAP[cardI][1][0]];
 		TableBaseRow& row2 = tb[CARDS_SWAP[cardI][1][1]];
-		for (U64 tbIndex = (TB_ROW_SIZE + 31) / 32 * (currChunk % NUM_CHUNKS_PER_CARD) / NUM_CHUNKS_PER_CARD; tbIndex < (TB_ROW_SIZE + 31) / 32 * ((currChunk % NUM_CHUNKS_PER_CARD) + 1) / NUM_CHUNKS_PER_CARD; tbIndex++) {
+		for (U64 tbIndex = (TB_ROW_SIZE + 31) / 32 * (currChunk % NUM_CHUNKS_PER_PAIR) / NUM_CHUNKS_PER_PAIR; tbIndex < (TB_ROW_SIZE + 31) / 32 * ((currChunk % NUM_CHUNKS_PER_PAIR) + 1) / NUM_CHUNKS_PER_PAIR; tbIndex++) {
 			__builtin_prefetch(&row0[tbIndex]);
 			__builtin_prefetch(&row1[tbIndex]);
 			__builtin_prefetch(&row2[tbIndex]);
