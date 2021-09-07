@@ -158,11 +158,12 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 					U64 scan = board.bbp[1];
 					while (scan) {
 						U64 sourcePiece = scan & -scan;
+						U64 landMask = kingThreatenPawns && sourcePiece != board.bbk[1] ? kingThreatenPawns : ~board.bbp[1];
 						scan &= scan - 1;
 						U64 bbp = board.bbp[1] - sourcePiece;
 						U64 pp = _tzcnt_u64(sourcePiece);
 						{
-							U64 land = moveBoard0[pp] & (kingThreatenPawns && sourcePiece != board.bbk[1] ? kingThreatenPawns : ~board.bbp[1]);
+							U64 land = moveBoard0[pp] & landMask;
 							while (land) {
 								U64 landPiece = land & -land;
 								assert((landPiece & board.bbk[0]) == 0);
@@ -186,7 +187,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							}
 						}
 						{
-							U64 land = moveBoard1[pp] & (kingThreatenPawns && sourcePiece != board.bbk[1] ? kingThreatenPawns : ~board.bbp[1]);
+							U64 land = moveBoard1[pp] & landMask;
 							while (land) {
 								U64 landPiece = land & -land;
 								assert((landPiece & board.bbk[0]) == 0);
