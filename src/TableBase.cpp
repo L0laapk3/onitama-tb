@@ -133,7 +133,6 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 		// forward moves for p1 so reverse moveboards
 		const MoveBoard& moveBoard0 = cards.moveBoardsReverse[permutation.playerCards[1][0]];
 		const MoveBoard& moveBoard1 = cards.moveBoardsReverse[permutation.playerCards[1][1]];
-		MoveBoard invCombinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[1][0]], cards.moveBoardsForward[permutation.playerCards[1][1]]);
 		TableBaseRow& targetRow0 = tb[CARDS_SWAP[cardI][1][0]];
 		TableBaseRow& targetRow1 = tb[CARDS_SWAP[cardI][1][1]];
 		const MoveBoard combinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
@@ -152,7 +151,6 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 			for (U32 bits = ~entry; bits; bits &= bits - 1) {
 				U64 bitIndex = _tzcnt_u64(bits);
 				Board board = indexToBoard<true>(tbIndex * 32 + bitIndex); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
-				assert(!board.isWinInOne<true>(invCombinedMoveBoardFlip));
 				if (!board.isTempleWinInOne<false>(combinedMoveBoardFlip)) {
 					U64 kingThreatenPawns = board.isTakeWinInOne<false>(combinedMoveBoardFlip);
 					U64 scan = board.bbp[1];
@@ -166,13 +164,11 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							U64 land = moveBoard0[pp] & landMask;
 							while (land) {
 								U64 landPiece = land & -land;
-								assert((landPiece & board.bbk[0]) == 0);
 								land &= land - 1;
 								Board targetBoard{
 									.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
 									.bbk = { board.bbk[0], sourcePiece == board.bbk[1] ? landPiece : board.bbk[1] },
 								};
-								assert(targetBoard.bbk[1] != 1 << PTEMPLE[1]);
 
 								if (!targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip)) {
 
@@ -190,13 +186,11 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							U64 land = moveBoard1[pp] & landMask;
 							while (land) {
 								U64 landPiece = land & -land;
-								assert((landPiece & board.bbk[0]) == 0);
 								land &= land - 1;
 								Board targetBoard{
 									.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
 									.bbk = { board.bbk[0], sourcePiece == board.bbk[1] ? landPiece : board.bbk[1] },
 								};
-								assert(targetBoard.bbk[1] != 1 << PTEMPLE[1]);
 
 								if (!targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip)) {
 
