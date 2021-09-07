@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Config.h"
+
 #include "Types.h"
 #include "Helper.h"
 #include "Board.h"
@@ -13,9 +15,6 @@
 #include <iostream>
 #include <bitset>
 #include <algorithm>
-
-
-#define TB_MEN 6
 
 
 
