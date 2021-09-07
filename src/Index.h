@@ -269,18 +269,34 @@ inline U64 boardToIndex(Board board) __attribute__((always_inline)) {
 	r += rk;
 
 	r *= PIECES1MULT[pp0cnt][pp1cnt];
-	U64 rp1 = 0;
-	if (TB_MEN > 8) rp1 += ip1p3 * (ip1p3-1) * (ip1p3-2) * (ip1p3-3);
-	if (TB_MEN > 6) rp1 += ip1p2 * (ip1p2-1) * (ip1p2-2) * 4;
-	rp1 += ip1p1 * (ip1p1-1) * 12;
-	r += rp1 / 24 + ip1p0;
+	if (TB_MEN > 8) {
+		U64 rp1 = ip1p3 * (ip1p3-1) * (ip1p3-2) * (ip1p3-3);
+		rp1    += ip1p2 * (ip1p2-1) * (ip1p2-2) * 4;
+		rp1    += ip1p1 * (ip1p1-1) * 12;
+		r += rp1 / 24 + ip1p0;
+	} else if (TB_MEN > 6) {
+		U64 rp1 = ip1p2 * (ip1p2-1) * (ip1p2-2);
+		rp1    += ip1p1 * (ip1p1-1) * 3;
+		r += rp1 / 6 + ip1p0;
+	} else {
+		U64 rp1 = ip1p1 * (ip1p1-1);
+		r += rp1 / 2 + ip1p0;
+	}
 
 	r *= PIECES0MULT[pp0cnt];
-	U64 rp0 = 0;
-	if (TB_MEN > 8) rp0 += ip0p3 * (ip0p3-1) * (ip0p3-2) * (ip0p3-3);
-	if (TB_MEN > 6) rp0 += ip0p2 * (ip0p2-1) * (ip0p2-2) * 4;
-	rp0 += ip0p1 * (ip0p1-1) * 12;
-	r += rp0 / 24 + ip0p0;
+	if (TB_MEN > 8) {
+		U64 rp0 = ip0p3 * (ip0p3-1) * (ip0p3-2) * (ip0p3-3);
+		rp0    += ip0p2 * (ip0p2-1) * (ip0p2-2) * 4;
+		rp0    += ip0p1 * (ip0p1-1) * 12;
+		r += rp0 / 24 + ip0p0;
+	} else if (TB_MEN > 6) {
+		U64 rp0 = ip0p2 * (ip0p2-1) * (ip0p2-2);
+		rp0    += ip0p1 * (ip0p1-1) * 3;
+		r += rp0 / 6 + ip0p0;
+	} else {
+		U64 rp0 = ip0p1 * (ip0p1-1);
+		r += rp0 / 2 + ip0p0;
+	}
 
 	r += offset;
 	assert(r < TB_ROW_SIZE);
