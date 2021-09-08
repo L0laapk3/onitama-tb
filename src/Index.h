@@ -221,8 +221,8 @@ inline U64 boardToIndex(Board board) __attribute__((always_inline)) {
 	U64 bbpc0 = _pext_u64(bbpp0, ~board.bbk[0] & ~board.bbk[1]); // P0 pawns skip over kings
 	U64 bbpc1 = _pext_u64(bbpp1, ~board.bbk[1] & ~board.bbp[0]); // P1 pawns skip over kings and P0 pawns
 	
-	U64 pp0cnt = _popcnt64(bbpp0);
-	U64 pp1cnt = _popcnt64(bbpp1);
+	U64 pp0cnt = _popcnt64(bbpc0);
+	U64 pp1cnt = _popcnt64(bbpc1);
 	U64 offset = OFFSETS_SUB_EMPTY[pp0cnt][pp1cnt];
 
 	// 0 means the piece has been taken and is not on the board
