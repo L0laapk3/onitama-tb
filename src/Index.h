@@ -173,19 +173,23 @@ constexpr auto TABLE_TWOPAWNS_INV = GENERATE_PAWN_TABLE<2, true>();
 #endif
 
 
-constexpr auto mulTable4 = [](){
+#if TB_MEN >= 10
+constexpr auto MULTABLE4 = [](){
 	std::array<U64, 65> a;
 	for (int i = 0; i < 65; i++)
 		a[i] = i * (i - 1) * (i - 2) * (i - 3) / 24;
     return a;
 }();
-constexpr auto mulTable3 = [](){
+#endif
+#if TB_MEN >= 8
+constexpr auto MULTABLE3 = [](){
 	std::array<U64, 65> a;
 	for (int i = 0; i < 65; i++)
 		a[i] = i * (i - 1) * (i - 2) / 6;
     return a;
 }();
-constexpr auto mulTable2 = [](){
+#endif
+constexpr auto MULTABLE2 = [](){
 	std::array<U64, 65> a;
 	for (int i = 0; i < 65; i++)
 		a[i] = i * (i - 1) / 2;
@@ -250,15 +254,23 @@ inline U64 boardToIndex(Board board) __attribute__((always_inline)) {
 	r += rk;
 
 	r *= PIECES1MULT[pp0cnt][pp1cnt];
-	if (TB_MEN > 8) r += mulTable4[ip1p3];
-	if (TB_MEN > 6) r += mulTable3[ip1p2];
-	r += mulTable2[ip1p1];
+#if TB_MEN >= 10
+	r += MULTABLE4[ip1p3];
+#endif
+#if TB_MEN >= 8
+	r += MULTABLE3[ip1p2];
+#endif
+	r += MULTABLE2[ip1p1];
 	r += ip1p0;
 
 	r *= PIECES0MULT[pp0cnt];
-	if (TB_MEN > 8) r += mulTable4[ip0p3];
-	if (TB_MEN > 6) r += mulTable3[ip0p2];
-	r += mulTable2[ip0p1];
+#if TB_MEN >= 10
+	r += MULTABLE4[ip0p3];
+#endif
+#if TB_MEN >= 8
+	r += MULTABLE3[ip0p2];
+#endif
+	r += MULTABLE2[ip0p1];
 	r += ip0p0;
 
 	r += offset;
