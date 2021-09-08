@@ -18,7 +18,7 @@
 constexpr bool COUNT_BOARDS = true;
 
 
-constexpr U64 NUM_CHUNKS_PER_CARD = TB_ROW_SIZE / 4096;
+constexpr U64 NUM_CHUNKS_PER_CARD = TB_ROW_SIZE / (1ULL << 18);
 constexpr U64 NUM_CHUNKS_PER_PAIR = NUM_CHUNKS_PER_CARD * 3;
 constexpr U64 NUM_CHUNKS = NUM_CHUNKS_PER_CARD * 30;
 
