@@ -31,6 +31,20 @@ constexpr auto PIECES1MULT = [](){
 	return a;
 }();
 #define PIECES0MULT PIECES1MULT[0]
+constexpr auto PIECES10MULT = [](){
+	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a;
+	for (int p0 = 0; p0 < TB_MEN/2; p0++)
+		for (int p1 = 0; p1 < TB_MEN/2; p1++)
+			a[p0][p1] = PIECES0MULT[p0] * PIECES1MULT[p0][p1];
+	return a;
+}();
+constexpr auto PIECES10KMULT = [](){
+	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a;
+	for (int p0 = 0; p0 < TB_MEN/2; p0++)
+		for (int p1 = 0; p1 < TB_MEN/2; p1++)
+			a[p0][p1] = KINGSMULT * PIECES0MULT[p0] * PIECES1MULT[p0][p1];
+	return a;
+}();
 
 constexpr auto OFFSET_ORDER = []() {
 	std::array<std::pair<U64, U64>, TB_MEN/2 * TB_MEN/2> a;
@@ -53,7 +67,7 @@ constexpr auto GENERATE_TABLE_SIZES() {
     U64 offset_cumul = 0;
 	for (auto& pc : OFFSET_ORDER) {
 		if (!includeSelf) a[pc.first][pc.second] = offset_cumul;
-        offset_cumul += KINGSMULT * PIECES0MULT[pc.first] * PIECES1MULT[pc.first][pc.second];
+        offset_cumul += KINGSMULT * PIECES10MULT[pc.first][pc.second];
 		if (includeSelf) a[pc.first][pc.second] = offset_cumul;
     }
 	return std::pair{ a, offset_cumul };
@@ -89,11 +103,12 @@ constexpr auto OFFSETS_SUB_EMPTY = [](){
 }();
 
 constexpr auto TABLE_TWOKINGS = [](){
-	std::array<U32, 25*25> a;
-	U32 i = 0;
+	std::array<U16, 32*25> a{ (U16)-1 };
+	U16 i = 0;
 	for (int j = 0; j < 25; j++)
 		for (int k = 0; k < 25; k++)
-            a[j*25 + k] = k != j && j != PTEMPLE[0] && k != PTEMPLE[1] ? i++ : -1;
+			if (k != j && j != PTEMPLE[0] && k != PTEMPLE[1])
+          		a[j*32 + k] = i++;
     return a;
 }();
 constexpr auto TABLES_BBKINGS = [](){
@@ -206,6 +221,20 @@ constexpr auto MULTABLE2 = [](){
 }();
 
 
+
+template <bool invert>
+#ifdef NO_INLINE_INDEX
+__attribute__((noinline))
+#else
+__attribute__((always_inline)) inline 
+#endif
+U64 boardToIndex_kings(Board board) {
+	U64 ik0 = invert ? _lzcnt_u64(board.bbk[0]) - 39 : _tzcnt_u64(board.bbk[0]); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
+	U64 ik1 = invert ? _lzcnt_u64(board.bbk[1]) - 39 : _tzcnt_u64(board.bbk[1]);
+	return TABLE_TWOKINGS[ik0*32 + ik1];
+}
+
+
 template <bool invert>
 #ifdef NO_INLINE_INDEX
 __attribute__((noinline))
@@ -218,9 +247,7 @@ U64 boardToIndex(Board board) {
 		std::swap(board.bbk[0], board.bbk[1]);
 	}
 
-	U64 ik0 = invert ? _lzcnt_u64(board.bbk[0]) - 39 : _tzcnt_u64(board.bbk[0]); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
-	U64 ik1 = invert ? _lzcnt_u64(board.bbk[1]) - 39 : _tzcnt_u64(board.bbk[1]);
-	U64 rk = TABLE_TWOKINGS[ik0*25 + ik1];
+	U64 rk = boardToIndex_kings<invert>(board);
 	assert(rk != (U32)-1); // impossible king position check
 
 	U64 bbpp0 = board.bbp[0] - board.bbk[0];
@@ -277,6 +304,7 @@ U64 boardToIndex(Board board) {
 	r += MULTABLE2[ip1p1 - 1];
 	r += ip1p0;
 
+
 	r *= PIECES0MULT[pp0cnt];
 #if TB_MEN >= 10
 	r += MULTABLE4[ip0p3 - 3];
@@ -286,6 +314,7 @@ U64 boardToIndex(Board board) {
 #endif
 	r += MULTABLE2[ip0p1 - 1];
 	r += ip0p0;
+
 
 	r += offset;
 	assert(r < TB_ROW_SIZE);
