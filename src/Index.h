@@ -171,44 +171,26 @@ constexpr auto TABLE_TWOPAWNS_INV = GENERATE_PAWN_TABLE<2, true>();
 		{ &TABLE_ZEROPAWNS_INV[0], &TABLE_ONEPAWN_INV[0], &TABLE_TWOPAWNS_INV[0], &TABLE_THREEPAWNS_INV[0], &TABLE_FOURPAWNS_INV[0] },
 	}};
 #endif
-// template<int size>
-// constexpr void GENERATE_PAWN_TABLE_PAWN(U32 bb, int remaining, std::array<U32, size>& a, std::array<U32, 4> p, U32 index) {
-// 	if (remaining <= 0) {
-// 		U64 rp = p[3] * (p[3]-1) * (p[3]-2) * (p[3]-3);
-// 		rp    += p[2] * (p[2]-1) * (p[2]-2) * 4;
-// 		rp    += p[1] * (p[1]-1) * 12;
-// 		a[rp / 24 + p[0]] = bb;
-// 	} else
-// 		for (p[index] = 0; p[index] < 23; p[index]++) {
-// 			U64 bbp = 1 << p[index];
-// 			if (bbp > bb)
-// 				GENERATE_PAWN_TABLE_PAWN<size>(bbp | bb, remaining - 1, a, p, index + 1);
-// 		}
-// }
-// template<int pawns>
-// constexpr auto GENERATE_PAWN_TABLE() {
-// 	const U64 size = fact(23, 23-pawns) / fact(pawns);
-// 	std::array<U32, size> a;
-// 	GENERATE_PAWN_TABLE_PAWN<size>(0, pawns, a, { 0 }, 0);
-//     return a;
-// };
 
-// constexpr auto TABLE_ZEROPAWNS = GENERATE_PAWN_TABLE<0>();
-// constexpr auto TABLE_ONEPAWN = GENERATE_PAWN_TABLE<1>();
-// constexpr auto TABLE_TWOPAWNS = GENERATE_PAWN_TABLE<2>();
-// #if TB_MEN >= 8
-// 	constexpr auto TABLE_THREEPAWNS = GENERATE_PAWN_TABLE<3>();
-// #endif
-// #if TB_MEN >= 10
-// 	constexpr auto TABLE_FOURPAWNS = GENERATE_PAWN_TABLE<4>();
-// #endif
-// #if TB_MEN == 6
-// 	constexpr std::array<const U32*, 3> PAWNTABLE_POINTERS = { &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0] };
-// #elif TB_MEN == 8
-// 	constexpr std::array<const U32*, 4> PAWNTABLE_POINTERS = { &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0] };
-// #else
-// 	constexpr std::array<const U32*, 5> PAWNTABLE_POINTERS = { &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0], &TABLE_FOURPAWNS[0] };
-// #endif
+
+constexpr auto mulTable4 = [](){
+	std::array<U64, 65> a;
+	for (int i = 0; i < 65; i++)
+		a[i] = i * (i - 1) * (i - 2) * (i - 3) / 24;
+    return a;
+}();
+constexpr auto mulTable3 = [](){
+	std::array<U64, 65> a;
+	for (int i = 0; i < 65; i++)
+		a[i] = i * (i - 1) * (i - 2) / 6;
+    return a;
+}();
+constexpr auto mulTable2 = [](){
+	std::array<U64, 65> a;
+	for (int i = 0; i < 65; i++)
+		a[i] = i * (i - 1) / 2;
+    return a;
+}();
 
 
 template <bool invert>
@@ -239,7 +221,7 @@ inline U64 boardToIndex(Board board) __attribute__((always_inline)) {
 	// our algorithm to achieve this depends on p0 < p1 < p2 < p3, where 0 is treated as the largest number.
 	U64 ip0p0, ip0p1, ip0p2, ip0p3, ip1p0, ip1p1, ip1p2, ip1p3;
 	if (!invert) {
-		ip0p0 = _tzcnt_u64(bbpc0); // when not found, it will return 64 which is cut off by the & operation
+		ip0p0 = _tzcnt_u64(bbpc0); // when not found, it will return 64 which is compensated by OFFSETS_SUB_EMPTY
 		ip0p1 = _tzcnt_u64(bbpc0 &= bbpc0-1);
 		if (TB_MEN > 6) ip0p2 = _tzcnt_u64(bbpc0 &= bbpc0-1);
 		if (TB_MEN > 8) ip0p3 = _tzcnt_u64(bbpc0 &= bbpc0-1);
@@ -268,34 +250,16 @@ inline U64 boardToIndex(Board board) __attribute__((always_inline)) {
 	r += rk;
 
 	r *= PIECES1MULT[pp0cnt][pp1cnt];
-	if (TB_MEN > 8) {
-		U64 rp1 = ip1p3 * (ip1p3-1) * (ip1p3-2) * (ip1p3-3);
-		rp1    += ip1p2 * (ip1p2-1) * (ip1p2-2) * 4;
-		rp1    += ip1p1 * (ip1p1-1) * 12;
-		r += rp1 / 24 + ip1p0;
-	} else if (TB_MEN > 6) {
-		U64 rp1 = ip1p2 * (ip1p2-1) * (ip1p2-2);
-		rp1    += ip1p1 * (ip1p1-1) * 3;
-		r += rp1 / 6 + ip1p0;
-	} else {
-		U64 rp1 = ip1p1 * (ip1p1-1);
-		r += rp1 / 2 + ip1p0;
-	}
+	if (TB_MEN > 8) r += mulTable4[ip1p3];
+	if (TB_MEN > 6) r += mulTable3[ip1p2];
+	r += mulTable2[ip1p1];
+	r += ip1p0;
 
 	r *= PIECES0MULT[pp0cnt];
-	if (TB_MEN > 8) {
-		U64 rp0 = ip0p3 * (ip0p3-1) * (ip0p3-2) * (ip0p3-3);
-		rp0    += ip0p2 * (ip0p2-1) * (ip0p2-2) * 4;
-		rp0    += ip0p1 * (ip0p1-1) * 12;
-		r += rp0 / 24 + ip0p0;
-	} else if (TB_MEN > 6) {
-		U64 rp0 = ip0p2 * (ip0p2-1) * (ip0p2-2);
-		rp0    += ip0p1 * (ip0p1-1) * 3;
-		r += rp0 / 6 + ip0p0;
-	} else {
-		U64 rp0 = ip0p1 * (ip0p1-1);
-		r += rp0 / 2 + ip0p0;
-	}
+	if (TB_MEN > 8) r += mulTable4[ip0p3];
+	if (TB_MEN > 6) r += mulTable3[ip0p2];
+	r += mulTable2[ip0p1];
+	r += ip0p0;
 
 	r += offset;
 	assert(r < TB_ROW_SIZE);
