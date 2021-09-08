@@ -170,7 +170,8 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 			U64 newP1Wins = 0;
 			for (U32 bits = ~entry; bits; bits &= bits - 1) {
 				U64 bitIndex = _tzcnt_u64(bits);
-				Board board = indexToBoard<true>(tbIndex * 32 + bitIndex); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
+				PartialIndex pi;
+				Board board = indexToBoard<true>(tbIndex * 32 + bitIndex, pi); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
 				if (!board.isTempleWinInOne<false>(combinedMoveBoardFlip)) {
 					U64 kingThreatenPawns = board.isTakeWinInOne<false>(combinedMoveBoardFlip);
 					U64 scan = board.bbp[1] & ~board.bbk[1];
