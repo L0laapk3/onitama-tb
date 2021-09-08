@@ -204,7 +204,7 @@ constexpr auto MULTABLE2 = [](){
 
 
 template <bool invert>
-inline U64 boardToIndex(Board board) __attribute__((always_inline)) {
+U64 __attribute__((always_inline)) inline boardToIndex(Board board) {
 	if (invert) {
 		std::swap(board.bbp[0], board.bbp[1]);
 		std::swap(board.bbk[0], board.bbk[1]);
@@ -292,7 +292,7 @@ struct FromIndexHalfReturn {
 	U64 bbpc1;
 };
 template <bool invert, int p0c, int p1c>
-FromIndexHalfReturn inline fromIndexHelper(U64 index) {
+FromIndexHalfReturn __attribute__((always_inline)) inline fromIndexHelper(U64 index) {
 	index -= OFFSETS[p0c][p1c];
 	constexpr U64 p0mult = PIECES0MULT[p0c];
 	constexpr U64 p1mult = PIECES1MULT[p0c][p1c];
@@ -314,7 +314,7 @@ FromIndexHalfReturn inline fromIndexHelper(U64 index) {
 }
 
 template<bool invert>
-Board inline indexToBoard(U64 index) __attribute__((always_inline)) {
+Board __attribute__((always_inline)) inline indexToBoard(U64 index) {
 
 	FromIndexHalfReturn bbStuff;
 	if (0);

@@ -15,7 +15,7 @@
 #include <x86intrin.h>
 
 
-constexpr bool COUNT_BOARDS = true;
+constexpr bool COUNT_BOARDS = false;
 
 
 constexpr U64 NUM_CHUNKS_PER_CARD = TB_ROW_SIZE / (1ULL << 18);
@@ -62,7 +62,7 @@ TableBase generateTB(const CardsInfo& cards) {
 		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
 		totalTime += time;
 		U64 cnt = cnt_0;
-		if (COUNT_BOARDS || !modified) {
+		if (COUNT_BOARDS) {
 			for (auto& row : tb)
 				for (auto& val : row)
 					cnt += _popcnt32(val);
@@ -78,7 +78,11 @@ TableBase generateTB(const CardsInfo& cards) {
 		depth++;
 	}
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
-	printf("found %llu boards in %.3fs/%.3fs\n", totalBoards, totalTime, totalInclusiveTime);
+	U64 cnt = cnt_0;
+	for (auto& row : tb)
+		for (auto& val : row)
+			cnt += _popcnt32(val);
+	printf("found %llu boards in %.3fs/%.3fs\n", cnt, totalTime, totalInclusiveTime);
 
 	return tb;
 }
