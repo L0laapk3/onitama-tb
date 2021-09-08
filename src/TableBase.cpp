@@ -278,22 +278,49 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 				U64 bbk0WinPosUnmove0 = combinedMoveBoardsFlipUnmove0[PTEMPLE[0]];
 				U64 bbk0WinPosUnmove1 = combinedMoveBoardsFlipUnmove1[PTEMPLE[0]];
 						
-				U64 scan = board.bbp[0];
-				while (scan) {
+				U64 scan = board.bbp[0] & ~board.bbk[0]; // no reverse take moves
+				while (scan) { // pawn unmoves
 					U64 sourcePiece = scan & -scan;
 					scan &= scan - 1;
-					bool kingMove = sourcePiece == board.bbk[0];
 					U64 bbp = board.bbp[0] - sourcePiece;
 					U64 pp = _tzcnt_u64(sourcePiece);
 					U64 land = p0ReverseMoveBoard[pp] & ~board.bbp[1] & ~board.bbp[0];
-					if (kingMove)
-						land &= ~(1 << PTEMPLE[0]);
 					while (land) {
 						U64 landPiece = land & -land;
 						land &= land - 1;
 						Board targetBoard{
 							.bbp = { bbp | landPiece, board.bbp[1] },
-							.bbk = { kingMove ? landPiece : board.bbk[0], board.bbk[1] },
+							.bbk = { board.bbk[0], board.bbk[1] },
+						};
+
+						// bool isWinInOne0 = (pk1Unmove0 & targetBoard.bbp[0]) || (kingMove && (landPiece & bbk0WinPosUnmove0));
+						bool isWinInOne0 = (pk1Unmove0 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove0 & targetBoard.bbk[0]) && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
+						bool isWinInOne1 = (pk1Unmove1 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove1 & targetBoard.bbk[0]) && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
+						if (!isWinInOne0) {
+							U64 targetIndex = boardToIndex<false>(targetBoard);
+							p0ReverseTargetRow0[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
+							if (!isWinInOne1)
+								p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
+						} else {
+							if (!isWinInOne1) {
+								U64 targetIndex = boardToIndex<false>(targetBoard);
+								p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
+							}
+
+						}
+					}
+				}
+				{ // king unmove
+					U64 sourcePiece = board.bbk[0];
+					U64 bbp = board.bbp[0] - sourcePiece;
+					U64 pp = _tzcnt_u64(sourcePiece);
+					U64 land = p0ReverseMoveBoard[pp] & ~board.bbp[1] & ~board.bbp[0] & ~(1 << PTEMPLE[0]);
+					while (land) {
+						U64 landPiece = land & -land;
+						land &= land - 1;
+						Board targetBoard{
+							.bbp = { bbp | landPiece, board.bbp[1] },
+							.bbk = { landPiece, board.bbk[1] },
 						};
 
 						// bool isWinInOne0 = (pk1Unmove0 & targetBoard.bbp[0]) || (kingMove && (landPiece & bbk0WinPosUnmove0));
@@ -315,24 +342,51 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 				}
 				
 				
-				if (_popcnt64(board.bbp[1]) < TB_MEN / 2) {
-					scan = board.bbp[0];
-					while (scan) {
+				if (_popcnt64(board.bbp[1]) < TB_MEN / 2) { // reverse take move
+					scan = board.bbp[0] & ~board.bbk[0];
+					while (scan) { // pawn unmoves
 						U64 sourcePiece = scan & -scan;
-						bool kingMove = sourcePiece == board.bbk[0];
 						scan &= scan - 1;
 						U64 bbp = board.bbp[0] - sourcePiece;
 						U64 bbp1 = board.bbp[1] | sourcePiece;
 						U64 pp = _tzcnt_u64(sourcePiece);
 						U64 land = p0ReverseMoveBoard[pp] & ~board.bbp[1] & ~board.bbp[0];
-						if (kingMove)
-							land &= ~(1 << PTEMPLE[0]);
 						while (land) {
 							U64 landPiece = land & -land;
 							land &= land - 1;
 							Board targetBoard{
 								.bbp = { bbp | landPiece, bbp1 },
-								.bbk = { kingMove ? landPiece : board.bbk[0], board.bbk[1] },
+								.bbk = { board.bbk[0], board.bbk[1] },
+							};
+							
+							bool isWinInOne0 = (pk1Unmove0 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove0 & targetBoard.bbk[0]) && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
+							bool isWinInOne1 = (pk1Unmove1 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove1 & targetBoard.bbk[0]) && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
+							if (!isWinInOne0) {
+								U64 targetIndex = boardToIndex<false>(targetBoard);
+								p0ReverseTargetRow0[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
+								if (!isWinInOne1)
+									p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
+							} else {
+								if (!isWinInOne1) {
+									U64 targetIndex = boardToIndex<false>(targetBoard);
+									p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
+								}
+
+							}
+						}
+					}
+					{ // king unmove
+						U64 sourcePiece = board.bbk[0];
+						U64 bbp = board.bbp[0] - sourcePiece;
+						U64 bbp1 = board.bbp[1] | sourcePiece;
+						U64 pp = _tzcnt_u64(sourcePiece);
+						U64 land = p0ReverseMoveBoard[pp] & ~board.bbp[1] & ~board.bbp[0] & ~(1 << PTEMPLE[0]);
+						while (land) {
+							U64 landPiece = land & -land;
+							land &= land - 1;
+							Board targetBoard{
+								.bbp = { bbp | landPiece, bbp1 },
+								.bbk = { landPiece, board.bbk[1] },
 							};
 							
 							bool isWinInOne0 = (pk1Unmove0 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove0 & targetBoard.bbk[0]) && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
