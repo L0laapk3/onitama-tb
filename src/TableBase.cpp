@@ -15,9 +15,6 @@
 #include <x86intrin.h>
 
 
-constexpr bool COUNT_BOARDS = false;
-
-
 constexpr U64 NUM_CHUNKS_PER_CARD = TB_ROW_SIZE / (1ULL << 18);
 constexpr U64 NUM_CHUNKS_PER_PAIR = NUM_CHUNKS_PER_CARD * 3;
 constexpr U64 NUM_CHUNKS = NUM_CHUNKS_PER_CARD * 30;
@@ -62,19 +59,20 @@ TableBase generateTB(const CardsInfo& cards) {
 		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
 		totalTime += time;
 		U64 cnt = cnt_0;
-		if (COUNT_BOARDS) {
-			for (auto& row : tb)
-				for (auto& val : row)
-					cnt += _popcnt32(val);
-			cnt -= totalBoards;
-			totalBoards += cnt;
-		}
+#ifdef COUNT_BOARDS
+		for (auto& row : tb)
+			for (auto& val : row)
+				cnt += _popcnt32(val);
+		cnt -= totalBoards;
+		totalBoards += cnt;
+#endif
 		if (!modified)
 			break;
-		if (COUNT_BOARDS)
+#ifdef COUNT_BOARDS
 			printf("iter %3llu: %11llu boards in %.3fs\n", depth, cnt, time);
-		else
+#else
 			printf("iter %3llu in %.3fs\n", depth, time);
+#endif
 		depth++;
 	}
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
