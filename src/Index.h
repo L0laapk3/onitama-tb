@@ -17,6 +17,9 @@
 #include <algorithm>
 
 
+// #define NO_INLINE_INDEX
+
+
 
 constexpr U64 KINGSMULT = 24 + 23*23;
 
@@ -204,7 +207,12 @@ constexpr auto MULTABLE2 = [](){
 
 
 template <bool invert>
-U64 __attribute__((always_inline)) inline boardToIndex(Board board) {
+#ifdef NO_INLINE_INDEX
+__attribute__((noinline))
+#else
+__attribute__((always_inline)) inline 
+#endif
+U64 boardToIndex(Board board) {
 	if (invert) {
 		std::swap(board.bbp[0], board.bbp[1]);
 		std::swap(board.bbk[0], board.bbk[1]);
@@ -292,7 +300,12 @@ struct FromIndexHalfReturn {
 	U64 bbpc1;
 };
 template <bool invert, int p0c, int p1c>
-FromIndexHalfReturn __attribute__((always_inline)) inline fromIndexHelper(U64 index) {
+#ifdef NO_INLINE_INDEX
+__attribute__((noinline))
+#else
+__attribute__((always_inline)) inline 
+#endif
+FromIndexHalfReturn fromIndexHelper(U64 index) {
 	index -= OFFSETS[p0c][p1c];
 	constexpr U64 p0mult = PIECES0MULT[p0c];
 	constexpr U64 p1mult = PIECES1MULT[p0c][p1c];
@@ -314,7 +327,12 @@ FromIndexHalfReturn __attribute__((always_inline)) inline fromIndexHelper(U64 in
 }
 
 template<bool invert>
-Board __attribute__((always_inline)) inline indexToBoard(U64 index) {
+#ifdef NO_INLINE_INDEX
+__attribute__((noinline))
+#else
+__attribute__((always_inline)) inline 
+#endif
+Board indexToBoard(U64 index) {
 
 	FromIndexHalfReturn bbStuff;
 	if (0);
