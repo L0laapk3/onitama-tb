@@ -229,9 +229,104 @@ __attribute__((noinline))
 __attribute__((always_inline)) inline 
 #endif
 U64 boardToIndex_kings(Board board) {
+	if (invert)
+		std::swap(board.bbk[0], board.bbk[1]);
+
 	U64 ik0 = invert ? _lzcnt_u64(board.bbk[0]) - 39 : _tzcnt_u64(board.bbk[0]); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
 	U64 ik1 = invert ? _lzcnt_u64(board.bbk[1]) - 39 : _tzcnt_u64(board.bbk[1]);
 	return TABLE_TWOKINGS[ik0*32 + ik1];
+}
+
+
+template <bool invert>
+#ifdef NO_INLINE_INDEX
+__attribute__((noinline))
+#else
+__attribute__((always_inline)) inline 
+#endif
+U64 boardToIndex_p0(Board board, U64& pp0cnt) {
+	if (invert) {
+		std::swap(board.bbp[0], board.bbp[1]);
+		std::swap(board.bbk[0], board.bbk[1]);
+	}
+
+	U64 bbpp0 = board.bbp[0] - board.bbk[0];
+	U64 bbpc0 = _pext_u64(bbpp0, ~board.bbk[0] & ~board.bbk[1]); // P0 pawns skip over kings
+	
+	pp0cnt = _popcnt64(bbpc0);
+
+	// 0 means the piece has been taken and is not on the board
+	// 1-x means the piece is on a square as given by bbp0c/bbp1c
+	// we can achieve a reduction of 4!, we don't care about the permutation of the 4 pawns.
+	// our algorithm to achieve this depends on p0 < p1 < p2 < p3, where 0 is treated as the largest number.
+	U64 ip0p0, ip0p1, ip0p2, ip0p3;
+		if (!invert) {
+		ip0p0 = _tzcnt_u32(bbpc0); // when not found, it will return 64 which is compensated by OFFSETS_SUB_EMPTY
+		ip0p1 = _tzcnt_u32(bbpc0 &= bbpc0-1);
+		if (TB_MEN > 6) ip0p2 = _tzcnt_u32(bbpc0 &= bbpc0-1);
+		if (TB_MEN > 8) ip0p3 = _tzcnt_u32(bbpc0 &= bbpc0-1);
+	} else {
+		bbpc0 <<= 9;
+		ip0p0 = _lzcnt_u32(bbpc0);
+		ip0p1 = _lzcnt_u32(bbpc0 &= ~(1ULL << 31 >> ip0p0));
+		if (TB_MEN > 6) ip0p2 = _lzcnt_u32(bbpc0 &= ~(1ULL << 31 >> ip0p1));
+		if (TB_MEN > 8) ip0p3 = _lzcnt_u32(bbpc0 &= ~(1ULL << 31 >> ip0p2));
+	}
+
+	U64 r = 0;
+	#if TB_MEN >= 10
+		r += MULTABLE4[ip0p3 - 3];
+	#endif
+	#if TB_MEN >= 8
+		r += MULTABLE3[ip0p2 - 2];
+	#endif
+	r += MULTABLE2[ip0p1 - 1];
+	r += ip0p0;
+	return r;
+}
+
+
+template <bool invert>
+#ifdef NO_INLINE_INDEX
+__attribute__((noinline))
+#else
+__attribute__((always_inline)) inline 
+#endif
+U64 boardToIndex_p1(Board board, U64 pp0cnt, U64& pp1cnt) {
+	if (invert) {
+		std::swap(board.bbp[0], board.bbp[1]);
+		std::swap(board.bbk[0], board.bbk[1]);
+	}
+
+	U64 bbpp1 = board.bbp[1] - board.bbk[1];
+	U64 bbpc1 = _pext_u64(bbpp1, ~board.bbk[1] & ~board.bbp[0]); // P1 pawns skip over kings and P0 pawns
+	
+	pp1cnt = _popcnt64(bbpc1);
+
+	U64 ip1p0, ip1p1, ip1p2, ip1p3;
+	if (!invert) {
+		ip1p0 = _tzcnt_u32(bbpc1);
+		ip1p1 = _tzcnt_u32(bbpc1 &= bbpc1-1);
+		if (TB_MEN > 6) ip1p2 = _tzcnt_u32(bbpc1 &= bbpc1-1);
+		if (TB_MEN > 8) ip1p3 = _tzcnt_u32(bbpc1 &= bbpc1-1);
+	} else {
+		bbpc1 <<= 9 + pp0cnt;
+		ip1p0 = _lzcnt_u32(bbpc1);
+		ip1p1 = _lzcnt_u32(bbpc1 &= ~(1ULL << 31 >> ip1p0));
+		if (TB_MEN > 6) ip1p2 = _lzcnt_u32(bbpc1 &= ~(1ULL << 31 >> ip1p1));
+		if (TB_MEN > 8) ip1p3 = _lzcnt_u32(bbpc1 &= ~(1ULL << 31 >> ip1p2));
+	}
+
+	U64 r = 0;
+	#if TB_MEN >= 10
+		r += MULTABLE4[ip1p3 - 3];
+	#endif
+	#if TB_MEN >= 8
+		r += MULTABLE3[ip1p2 - 2];
+	#endif
+	r += MULTABLE2[ip1p1 - 1];
+	r += ip1p0;
+	return r;
 }
 
 
@@ -247,47 +342,12 @@ U64 boardToIndex(Board board) {
 		std::swap(board.bbk[0], board.bbk[1]);
 	}
 
+	U64 pp0cnt, pp1cnt;
 	U64 rk = boardToIndex_kings<invert>(board);
-	assert(rk != (U32)-1); // impossible king position check
-
-	U64 bbpp0 = board.bbp[0] - board.bbk[0];
-	U64 bbpp1 = board.bbp[1] - board.bbk[1];
-	
-	U64 bbpc0 = _pext_u64(bbpp0, ~board.bbk[0] & ~board.bbk[1]); // P0 pawns skip over kings
-	U64 bbpc1 = _pext_u64(bbpp1, ~board.bbk[1] & ~board.bbp[0]); // P1 pawns skip over kings and P0 pawns
-	
-	U64 pp0cnt = _popcnt64(bbpc0);
-	U64 pp1cnt = _popcnt64(bbpc1);
+	U64 rp0 = boardToIndex_p0<invert>(board, pp0cnt);
+	U64 rp1 = boardToIndex_p1<invert>(board, pp0cnt, pp1cnt);
 	U64 offset = OFFSETS_SUB_EMPTY[pp0cnt][pp1cnt];
 
-	// 0 means the piece has been taken and is not on the board
-	// 1-x means the piece is on a square as given by bbp0c/bbp1c
-	// we can achieve a reduction of 4!, we don't care about the permutation of the 4 pawns.
-	// our algorithm to achieve this depends on p0 < p1 < p2 < p3, where 0 is treated as the largest number.
-	U64 ip0p0, ip0p1, ip0p2, ip0p3, ip1p0, ip1p1, ip1p2, ip1p3;
-	if (!invert) {
-		ip0p0 = _tzcnt_u32(bbpc0); // when not found, it will return 64 which is compensated by OFFSETS_SUB_EMPTY
-		ip0p1 = _tzcnt_u32(bbpc0 &= bbpc0-1);
-		if (TB_MEN > 6) ip0p2 = _tzcnt_u32(bbpc0 &= bbpc0-1);
-		if (TB_MEN > 8) ip0p3 = _tzcnt_u32(bbpc0 &= bbpc0-1);
-
-		ip1p0 = _tzcnt_u32(bbpc1);
-		ip1p1 = _tzcnt_u32(bbpc1 &= bbpc1-1);
-		if (TB_MEN > 6) ip1p2 = _tzcnt_u32(bbpc1 &= bbpc1-1);
-		if (TB_MEN > 8) ip1p3 = _tzcnt_u32(bbpc1 &= bbpc1-1);
-	} else {
-		bbpc0 <<= 9;
-		ip0p0 = _lzcnt_u32(bbpc0);
-		ip0p1 = _lzcnt_u32(bbpc0 &= ~(1ULL << 31 >> ip0p0));
-		if (TB_MEN > 6) ip0p2 = _lzcnt_u32(bbpc0 &= ~(1ULL << 31 >> ip0p1));
-		if (TB_MEN > 8) ip0p3 = _lzcnt_u32(bbpc0 &= ~(1ULL << 31 >> ip0p2));
-
-		bbpc1 <<= 9 + pp0cnt;
-		ip1p0 = _lzcnt_u32(bbpc1);
-		ip1p1 = _lzcnt_u32(bbpc1 &= ~(1ULL << 31 >> ip1p0));
-		if (TB_MEN > 6) ip1p2 = _lzcnt_u32(bbpc1 &= ~(1ULL << 31 >> ip1p1));
-		if (TB_MEN > 8) ip1p3 = _lzcnt_u32(bbpc1 &= ~(1ULL << 31 >> ip1p2));
-	}
 
 	U64 r = 0;
 
@@ -295,26 +355,10 @@ U64 boardToIndex(Board board) {
 	r += rk;
 
 	r *= PIECES1MULT[pp0cnt][pp1cnt];
-#if TB_MEN >= 10
-	r += MULTABLE4[ip1p3 - 3];
-#endif
-#if TB_MEN >= 8
-	r += MULTABLE3[ip1p2 - 2];
-#endif
-	r += MULTABLE2[ip1p1 - 1];
-	r += ip1p0;
-
+	r += rp1;
 
 	r *= PIECES0MULT[pp0cnt];
-#if TB_MEN >= 10
-	r += MULTABLE4[ip0p3 - 3];
-#endif
-#if TB_MEN >= 8
-	r += MULTABLE3[ip0p2 - 2];
-#endif
-	r += MULTABLE2[ip0p1 - 1];
-	r += ip0p0;
-
+	r += rp0;
 
 	r += offset;
 	assert(r < TB_ROW_SIZE);
