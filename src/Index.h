@@ -211,6 +211,8 @@ constexpr auto TABLE_TWOPAWNS_INV = GENERATE_PAWN_TABLE<2, true>();
 // #endif
 
 
+
+
 template <bool invert>
 inline U64 boardToIndex(Board board) __attribute__((always_inline)) {
 	if (invert) {
@@ -218,9 +220,20 @@ inline U64 boardToIndex(Board board) __attribute__((always_inline)) {
 		std::swap(board.bbk[0], board.bbk[1]);
 	}
 
-	U64 ik0 = invert ? _lzcnt_u64(board.bbk[0]) - 39 : _tzcnt_u64(board.bbk[0]); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
-	U64 ik1 = invert ? _lzcnt_u64(board.bbk[1]) - 39 : _tzcnt_u64(board.bbk[1]);
-	U64 rk = TABLE_TWOKINGS[ik0*25 + ik1];
+	// U64 rkc;
+	// U64 ik0c = invert ? _lzcnt_u64(board.bbk[0]) - 39 : _tzcnt_u64(board.bbk[0]); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
+	// U64 ik1c = invert ? _lzcnt_u64(board.bbk[1]) - 39 : _tzcnt_u64(board.bbk[1]);
+	// rkc = TABLE_TWOKINGS[ik0c*25 + ik1c];
+
+	U64 bbk0c = _pext_u64(board.bbk[0], ~(invert ? 1 << 24 >> PTEMPLE[0] : 1 << PTEMPLE[0]));
+	U64 bbk1c = _pext_u64(board.bbk[1], ~(invert ? 1 << 24 >> PTEMPLE[1] : 1 << PTEMPLE[1]) & ~board.bbk[0]);
+	U64 ik0 = invert ? _lzcnt_u64(bbk0c) - 40 : _tzcnt_u64(bbk0c);
+	U64 ik1 = invert ? _lzcnt_u64(bbk1c) - 40 - ((1 << 24 >> PTEMPLE[1]) != board.bbk[0]) : _tzcnt_u64(bbk1c);
+
+	U64 incr = invert ? board.bbk[0] < (1 << 24 >> PTEMPLE[1]) : board.bbk[0] > (1 << PTEMPLE[1]);
+	U64 rk = ik0 * 23 + ik1 + incr;
+	// assert(rkc == rk);
+
 	assert(rk != (U32)-1); // impossible king position check
 
 	U64 bbpp0 = board.bbp[0] - board.bbk[0];

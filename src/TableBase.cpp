@@ -15,7 +15,7 @@
 #include <x86intrin.h>
 
 
-constexpr bool COUNT_BOARDS = true;
+constexpr bool COUNT_BOARDS = false;
 
 
 constexpr U64 NUM_CHUNKS_PER_CARD = TB_ROW_SIZE / 4096;
