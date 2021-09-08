@@ -10,8 +10,9 @@ int main(int, char**) {
     if (0) {
         testIndexing();
         return 0;
-    }
+    } else {
     
-    constexpr CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB };
-    generateTB(CARDS);
+        constexpr CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB };
+        generateTB(CARDS);
+    }
 }
