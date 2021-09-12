@@ -171,7 +171,8 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 			for (U32 bits = ~entry; bits; bits &= bits - 1) {
 				U64 bitIndex = _tzcnt_u64(bits);
 				PartialIndex pi;
-				Board board = indexToBoard<true>(tbIndex * 32 + bitIndex, pi); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
+				Board board = indexToBoard<true, true>(tbIndex * 32 + bitIndex, pi); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
+				boardToIndexPartialSet<false, true, true, true>(board, pi); // todo: temp, remove this and instead generate it from the above
 				if (!board.isTempleWinInOne<false>(combinedMoveBoardFlip)) {
 					U64 kingThreatenPawns = board.isTakeWinInOne<false>(combinedMoveBoardFlip);
 					U64 scan = board.bbp[1] & ~board.bbk[1];
@@ -186,13 +187,28 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							while (land) {
 								U64 landPiece = land & -land;
 								land &= land - 1;
-								Board targetBoard{
-									.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
-									.bbk = { board.bbk[0], board.bbk[1] },
-								};
 
 								if (!depth2) {
-									U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
+									// U64 targetIndex;
+									// if (board.bbp[0] & landPiece) {
+									// 	Board targetBoard{
+									// 		.bbp = { board.bbp[0] - landPiece, bbp | landPiece },
+									// 		.bbk = { board.bbk[0], board.bbk[1] },
+									// 	};
+									// 	targetIndex = boardToIndexPartial<false, false, true, true>(targetBoard, pi);
+									// } else {
+									// 	Board targetBoard{
+									// 		.bbp = { board.bbp[0], bbp | landPiece },
+									// 		.bbk = { board.bbk[0], board.bbk[1] },
+									// 	};
+									// 	targetIndex = boardToIndexPartial<false, false, false, true>(targetBoard, pi);
+									// }
+									Board targetBoard{
+										.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
+										.bbk = { board.bbk[0], board.bbk[1] },
+									};
+									U64 targetIndex = boardToIndexPartial<false, false, true, true>(targetBoard, pi);
+									// the resulting board has p0 to move and needs to be a win
 									if ((targetRow0[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
 										continue;
 								}
@@ -211,7 +227,26 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 								};
 
 								if (!depth2) {
-									U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
+									// U64 targetIndex = boardToIndex<false>(targetBoard);
+									// U64 targetIndex;
+									// if (board.bbp[0] & landPiece) {
+									// 	Board targetBoard{
+									// 		.bbp = { board.bbp[0] - landPiece, bbp | landPiece },
+									// 		.bbk = { board.bbk[0], board.bbk[1] },
+									// 	};
+									// 	targetIndex = boardToIndexPartial<false, false, true, true>(targetBoard, pi);
+									// } else {
+									// 	Board targetBoard{
+									// 		.bbp = { board.bbp[0], bbp | landPiece },
+									// 		.bbk = { board.bbk[0], board.bbk[1] },
+									// 	};
+									// 	targetIndex = boardToIndexPartial<false, false, false, true>(targetBoard, pi);
+									// }
+									Board targetBoard{
+										.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
+										.bbk = { board.bbk[0], board.bbk[1] },
+									};
+									U64 targetIndex = boardToIndexPartial<false, false, true, true>(targetBoard, pi);
 									if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
 										continue;
 								}
@@ -237,7 +272,8 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 
 								if (!targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip)) {
 									if (!depth2) {
-										U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
+										U64 targetIndex = boardToIndex<false>(targetBoard);
+										// U64 targetIndex = (board.bbp[0] & landPiece) ? boardToIndex<false>(targetBoard) : boardToIndexPartial<false, true, false, false>(targetBoard, pi); // the resulting board has p0 to move and needs to be a win
 										if ((targetRow0[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
 											continue;
 									}
@@ -259,7 +295,8 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 								if (!targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip)) {
 
 									if (!depth2) {
-										U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
+										U64 targetIndex = boardToIndex<false>(targetBoard);
+										// U64 targetIndex = board.bbp[0] & landPiece ? boardToIndex<false>(targetBoard) : boardToIndexPartial<false, true, false, false>(targetBoard, pi); // the resulting board has p0 to move and needs to be a win
 										if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
 											continue;
 									}
@@ -306,13 +343,13 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 						bool isWinInOne0 = (pk1Unmove0 & targetBoard.bbp[0]) || (kingInTempleRange0 && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
 						bool isWinInOne1 = (pk1Unmove1 & targetBoard.bbp[0]) || (kingInTempleRange1 && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
 						if (!isWinInOne0) {
-							U64 targetIndex = boardToIndex<false>(targetBoard);
+							U64 targetIndex = boardToIndexPartial<false, false, true, true>(targetBoard, pi);
 							p0ReverseTargetRow0[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 							if (!isWinInOne1)
 								p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 						} else {
 							if (!isWinInOne1) {
-								U64 targetIndex = boardToIndex<false>(targetBoard);
+								U64 targetIndex = boardToIndexPartial<false, false, true, true>(targetBoard, pi);
 								p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 							}
 
@@ -371,13 +408,13 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							bool isWinInOne0 = (pk1Unmove0 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove0 & targetBoard.bbk[0]) && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
 							bool isWinInOne1 = (pk1Unmove1 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove1 & targetBoard.bbk[0]) && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
 							if (!isWinInOne0) {
-								U64 targetIndex = boardToIndex<false>(targetBoard);
+								U64 targetIndex = boardToIndexPartial<false, false, true, true>(targetBoard, pi);
 								p0ReverseTargetRow0[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 								if (!isWinInOne1)
 									p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 							} else {
 								if (!isWinInOne1) {
-									U64 targetIndex = boardToIndex<false>(targetBoard);
+									U64 targetIndex = boardToIndexPartial<false, false, true, true>(targetBoard, pi);
 									p0ReverseTargetRow1[targetIndex / 32].fetch_or(0x100000001ULL << (targetIndex % 32), std::memory_order_relaxed);
 								}
 

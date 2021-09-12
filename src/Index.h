@@ -296,43 +296,45 @@ struct PartialIndex {
 	U64 pp1cnt;
 };
 template <bool invert, bool doK, bool doP0, bool doP1>
-U64 INLINE_INDEX_FN boardToIndexPartial(Board board, PartialIndex& pi) {
+U64 INLINE_INDEX_FN boardToIndexPartialSet(Board board, PartialIndex& pi) {
 	
 	U64 ik;
-	if (doK) ik = boardToIndex_kings<invert>(board);
-
+	if (doK) pi.rk = boardToIndex_kings<invert>(board);
+	assert(pi.rk == boardToIndex_kings<invert>(board));
 	U64 bbpc0, bbpc1;
-	if (doP0) bbpc0 = boardToIndex_pawns_A<invert, false>(board);
-	if (doP1) bbpc1 = boardToIndex_pawns_A<invert, true>(board);
+	if (doP0 || true) bbpc0 = boardToIndex_pawns_A<invert, false>(board);
+	if (doP1 || true) bbpc1 = boardToIndex_pawns_A<invert, true>(board);
 	
 	if (doP0) pi.pp0cnt = _popcnt64(bbpc0);
+	assert(pi.pp0cnt == _popcnt64(bbpc0));
 	if (doP1) pi.pp1cnt = _popcnt64(bbpc1);
+	assert(pi.pp1cnt == _popcnt64(bbpc1));
 
-	U64 ip1;
 	if (doP0) pi.rp0 = boardToIndex_pawns_B<invert>(bbpc0, 0);
-	if (doP1) ip1 = boardToIndex_pawns_B<invert>(bbpc1, pi.pp0cnt);
+	assert(pi.rp0 == boardToIndex_pawns_B<invert>(bbpc0, 0));
+	if (doP1) pi.rp1 = boardToIndex_pawns_B<invert>(bbpc1, pi.pp0cnt);
+	assert(pi.rp1 == boardToIndex_pawns_B<invert>(bbpc1, pi.pp0cnt));
 	
 	U64 offset = OFFSETS_SUB_EMPTY[pi.pp0cnt][pi.pp1cnt];
 
 	U64 r = 0;
 
-	if (doK) {
-		r += ik;
-		r *= (doP1 ? PIECES1MULT : PIECES10MULT)[pi.pp0cnt][pi.pp1cnt];
-	}
+	r += pi.rk;
 
-	if (doP1) {
-		r += ip1;
-		r *= PIECES0MULT[pi.pp0cnt];
-	}
+	r *= PIECES1MULT[pi.pp0cnt][pi.pp1cnt];
+	r += pi.rp1;
 
-	if (!doK) r += pi.rk;
-	if (!doP1) r += pi.rp1;
+	r *= PIECES0MULT[pi.pp0cnt];
 	r += pi.rp0;
 
 	r += offset;
 	assert(r < TB_ROW_SIZE);
 	return r;
+}
+
+template <bool invert, bool doK, bool doP0, bool doP1>
+U64 INLINE_INDEX_FN boardToIndexPartial(Board board, PartialIndex pi) {
+	return boardToIndexPartialSet<invert, doK, doP0, doP1>(board, pi);
 }
 
 template <bool invert>
@@ -348,20 +350,27 @@ struct FromIndexHalfReturn {
 	U64 bbpc0;
 	U64 bbpc1;
 };
-template <bool invert, int p0c, int p1c>
+template <bool invert, bool piInvert, int p0c, int p1c>
 FromIndexHalfReturn INLINE_INDEX_FN fromIndexHelper(U64 index, PartialIndex& pi) {
 	index -= OFFSETS[p0c][p1c];
 	constexpr U64 p0mult = PIECES0MULT[p0c];
 	constexpr U64 p1mult = PIECES1MULT[p0c][p1c];
 
-	U64 ip0 = pi.rp0 = index % p0mult; //1
-	pi.rp1 = (index - ip0) % (p0mult * p1mult);
+	U64 ip0 = index % p0mult;
 	index /= p0mult;
-	U64 ip1 = index % p1mult; //10
-	U64 ik = index / p1mult;  //100
-	pi.rk = (index - ip1) * p0mult;
-	pi.pp0cnt = p0c;
-	pi.pp1cnt = p1c;
+	U64 ip1 = index % p1mult;
+	U64 ik = index / p1mult;
+
+	// if (piInvert) {
+	// 	pi.rp0 = ip0;
+	// 	pi.rp1 = ip1;
+	// 	pi.rk = ik;
+	// } else {
+	// 	// TODO
+	// }
+
+	// pi.pp0cnt = piInvert ? p1c : p0c;
+	// pi.pp1cnt = piInvert ? p0c : p1c;
 
 	// if (ik == 0)
 	// 	std::cout << p0c << " " << p1c << " " << ik << " " << ip0 << " " << ip1 << std::endl;
@@ -374,50 +383,50 @@ FromIndexHalfReturn INLINE_INDEX_FN fromIndexHelper(U64 index, PartialIndex& pi)
 	};
 }
 
-template<bool invert>
+template<bool invert, bool piInvert>
 Board INLINE_INDEX_FN indexToBoard(U64 index, PartialIndex& pi) {
 
 	FromIndexHalfReturn bbStuff;
 	if (0);
 #if TB_MEN >= 8
 #if TB_MEN >= 10
-	else if (index < MAX_INDEX[4][4]) bbStuff = fromIndexHelper<invert, 4, 4>(index, pi);
-	else if (index < MAX_INDEX[4][3]) bbStuff = fromIndexHelper<invert, 4, 3>(index, pi);
-	else if (index < MAX_INDEX[3][4]) bbStuff = fromIndexHelper<invert, 3, 4>(index, pi);
+	else if (index < MAX_INDEX[4][4]) bbStuff = fromIndexHelper<invert, piInvert, 4, 4>(index, pi);
+	else if (index < MAX_INDEX[4][3]) bbStuff = fromIndexHelper<invert, piInvert, 4, 3>(index, pi);
+	else if (index < MAX_INDEX[3][4]) bbStuff = fromIndexHelper<invert, piInvert, 3, 4>(index, pi);
 #endif
-	else if (index < MAX_INDEX[3][3]) bbStuff = fromIndexHelper<invert, 3, 3>(index, pi);
+	else if (index < MAX_INDEX[3][3]) bbStuff = fromIndexHelper<invert, piInvert, 3, 3>(index, pi);
 #if TB_MEN >= 10
-	else if (index < MAX_INDEX[4][2]) bbStuff = fromIndexHelper<invert, 4, 2>(index, pi);
-	else if (index < MAX_INDEX[2][4]) bbStuff = fromIndexHelper<invert, 2, 4>(index, pi);
+	else if (index < MAX_INDEX[4][2]) bbStuff = fromIndexHelper<invert, piInvert, 4, 2>(index, pi);
+	else if (index < MAX_INDEX[2][4]) bbStuff = fromIndexHelper<invert, piInvert, 2, 4>(index, pi);
 #endif
-	else if (index < MAX_INDEX[3][2]) bbStuff = fromIndexHelper<invert, 3, 2>(index, pi);
-	else if (index < MAX_INDEX[2][3]) bbStuff = fromIndexHelper<invert, 2, 3>(index, pi);
+	else if (index < MAX_INDEX[3][2]) bbStuff = fromIndexHelper<invert, piInvert, 3, 2>(index, pi);
+	else if (index < MAX_INDEX[2][3]) bbStuff = fromIndexHelper<invert, piInvert, 2, 3>(index, pi);
 #if TB_MEN >= 10
-	else if (index < MAX_INDEX[4][1]) bbStuff = fromIndexHelper<invert, 4, 1>(index, pi);
-	else if (index < MAX_INDEX[1][4]) bbStuff = fromIndexHelper<invert, 1, 4>(index, pi);
+	else if (index < MAX_INDEX[4][1]) bbStuff = fromIndexHelper<invert, piInvert, 4, 1>(index, pi);
+	else if (index < MAX_INDEX[1][4]) bbStuff = fromIndexHelper<invert, piInvert, 1, 4>(index, pi);
 #endif
 #endif
-	else if (index < MAX_INDEX[2][2]) bbStuff = fromIndexHelper<invert, 2, 2>(index, pi);
+	else if (index < MAX_INDEX[2][2]) bbStuff = fromIndexHelper<invert, piInvert, 2, 2>(index, pi);
 #if TB_MEN >= 8
-	else if (index < MAX_INDEX[3][1]) bbStuff = fromIndexHelper<invert, 3, 1>(index, pi);
-	else if (index < MAX_INDEX[1][3]) bbStuff = fromIndexHelper<invert, 1, 3>(index, pi);
+	else if (index < MAX_INDEX[3][1]) bbStuff = fromIndexHelper<invert, piInvert, 3, 1>(index, pi);
+	else if (index < MAX_INDEX[1][3]) bbStuff = fromIndexHelper<invert, piInvert, 1, 3>(index, pi);
 #if TB_MEN >= 10
-	else if (index < MAX_INDEX[4][0]) bbStuff = fromIndexHelper<invert, 4, 0>(index, pi);
-	else if (index < MAX_INDEX[0][4]) bbStuff = fromIndexHelper<invert, 0, 4>(index, pi);
+	else if (index < MAX_INDEX[4][0]) bbStuff = fromIndexHelper<invert, piInvert, 4, 0>(index, pi);
+	else if (index < MAX_INDEX[0][4]) bbStuff = fromIndexHelper<invert, piInvert, 0, 4>(index, pi);
 #endif
 #endif
-	else if (index < MAX_INDEX[2][1]) bbStuff = fromIndexHelper<invert, 2, 1>(index, pi);
-	else if (index < MAX_INDEX[1][2]) bbStuff = fromIndexHelper<invert, 1, 2>(index, pi);
+	else if (index < MAX_INDEX[2][1]) bbStuff = fromIndexHelper<invert, piInvert, 2, 1>(index, pi);
+	else if (index < MAX_INDEX[1][2]) bbStuff = fromIndexHelper<invert, piInvert, 1, 2>(index, pi);
 #if TB_MEN >= 8
-	else if (index < MAX_INDEX[3][0]) bbStuff = fromIndexHelper<invert, 3, 0>(index, pi);
-	else if (index < MAX_INDEX[0][3]) bbStuff = fromIndexHelper<invert, 0, 3>(index, pi);
+	else if (index < MAX_INDEX[3][0]) bbStuff = fromIndexHelper<invert, piInvert, 3, 0>(index, pi);
+	else if (index < MAX_INDEX[0][3]) bbStuff = fromIndexHelper<invert, piInvert, 0, 3>(index, pi);
 #endif
-	else if (index < MAX_INDEX[1][1]) bbStuff = fromIndexHelper<invert, 1, 1>(index, pi);
-	else if (index < MAX_INDEX[2][0]) bbStuff = fromIndexHelper<invert, 2, 0>(index, pi);
-	else if (index < MAX_INDEX[0][2]) bbStuff = fromIndexHelper<invert, 0, 2>(index, pi);
-	else if (index < MAX_INDEX[1][0]) bbStuff = fromIndexHelper<invert, 1, 0>(index, pi);
-	else if (index < MAX_INDEX[0][1]) bbStuff = fromIndexHelper<invert, 0, 1>(index, pi);
-	else                              bbStuff = fromIndexHelper<invert, 0, 0>(index, pi);
+	else if (index < MAX_INDEX[1][1]) bbStuff = fromIndexHelper<invert, piInvert, 1, 1>(index, pi);
+	else if (index < MAX_INDEX[2][0]) bbStuff = fromIndexHelper<invert, piInvert, 2, 0>(index, pi);
+	else if (index < MAX_INDEX[0][2]) bbStuff = fromIndexHelper<invert, piInvert, 0, 2>(index, pi);
+	else if (index < MAX_INDEX[1][0]) bbStuff = fromIndexHelper<invert, piInvert, 1, 0>(index, pi);
+	else if (index < MAX_INDEX[0][1]) bbStuff = fromIndexHelper<invert, piInvert, 0, 1>(index, pi);
+	else                              bbStuff = fromIndexHelper<invert, piInvert, 0, 0>(index, pi);
 
 	U64 bbk0, bbk1;
 	std::tie(bbk0, bbk1) = TABLES_BBKINGS[invert][bbStuff.ik];
@@ -442,7 +451,7 @@ Board INLINE_INDEX_FN indexToBoard(U64 index, PartialIndex& pi) {
 template<bool invert>
 Board INLINE_INDEX_FN indexToBoard(U64 index) {
 	PartialIndex pi;
-	return indexToBoard<invert>(index, pi);
+	return indexToBoard<invert, false>(index, pi);
 }
 
 
