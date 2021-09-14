@@ -285,6 +285,13 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 					}
 				}
 
+				
+				// if (depth == 2 && !board.isWinInTwo<false>(combinedMoveBoardFlip, combinedOtherMoveBoardFlip)) {
+				// 	if (board.isKingAttacked<false>(board.bbk[1], combinedMoveBoardFlip)) {
+				// 		std::cout << "sum tin wong" << std::endl;
+				// 		board.isWinInTwo<false>(combinedMoveBoardFlip, combinedOtherMoveBoardFlip);
+				// 	}
+				// }
 
 				// all p1 moves result in win for p0. mark state as won for p0
 				newP1Wins |= 0x000000001ULL << bitIndex;

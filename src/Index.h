@@ -293,14 +293,14 @@ U64 INLINE_INDEX_FN boardToIndex(Board board) {
 	
 	U64 rk = boardToIndex_kings<invert>(board);
 
-	U64 bbpc0 = boardToIndex_pawns_A<invert, false>(board);
 	U64 bbpc1 = boardToIndex_pawns_A<invert, true>(board);
+	U64 bbpc0 = boardToIndex_pawns_A<invert, false>(board);
 	
-	U64 pp0cnt = _popcnt64(bbpc0);
 	U64 pp1cnt = _popcnt64(bbpc1);
+	U64 pp0cnt = _popcnt64(bbpc0);
 
-	U64 rp0 = boardToIndex_pawns_B<invert>(bbpc0, 0);
 	U64 rp1 = boardToIndex_pawns_B<invert>(bbpc1, pp0cnt);
+	U64 rp0 = boardToIndex_pawns_B<invert>(bbpc0, 0);
 	
 	U64 offset = OFFSETS_SUB_EMPTY[pp0cnt][pp1cnt];
 
