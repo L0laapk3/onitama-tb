@@ -133,6 +133,7 @@ constexpr auto generateMoveBoard(const U32 card) {
 
 constexpr auto combineMoveBoards(const MoveBoard& a, const MoveBoard& b) {
 	MoveBoard comb;
+	#pragma unroll
     for (U64 i = 0; i < 25; i++)
 		comb[i] = a[i] | b[i];
 	return comb;
