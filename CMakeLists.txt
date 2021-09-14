@@ -18,7 +18,7 @@ target_include_directories(tb PRIVATE ${PROJECT_SOURCE_DIR}/Include)
 
 #target_include_directories(tb PUBLIC include)
 
-set(CMAKE_CXX_FLAGS "-march=native -fconstexpr-steps=10000000 -Wno-microsoft-goto")
+set(CMAKE_CXX_FLAGS "-march=native -fconstexpr-steps=10000000")
 set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG -D_MT -Xclang --dependent-lib=msvcrt")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-Ofast -g -DNDEBUG -Xclang -gcodeview -D_DLL -D_MT -Xclang --dependent-lib=msvcrt")
 
