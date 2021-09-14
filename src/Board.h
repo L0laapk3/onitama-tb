@@ -15,7 +15,6 @@ public:
 	std::array<U64, 2> bbp;
 	std::array<U64, 2> bbk;
 
-private:
 	template <U64 player>
 	U64 inline isKingAttacked(U64 bbk, const MoveBoard& reverseMoveBoard);
 	template <U64 player>
@@ -23,7 +22,6 @@ private:
 	template <U64 player>
 	bool inline isTempleFree();
 
-public:
 	template <U64 player>
 	bool inline isTempleWinInOne(const MoveBoard& reverseMoveBoard);
 	template <U64 player>
@@ -89,7 +87,7 @@ bool inline Board::isWinInTwo(const MoveBoard& reversePMoveBoard, const MoveBoar
 	if (isTempleWinInOne<player>(reversePMoveBoard)) // !player can never prevent temple wins without winning itself earlier
 		return true;
 
-	// temple player wins have been taken care of. All we have to do now is make sure !player king is safe
+	// temple player wins have been taken care of. All we have to do now is make sure !player has at least 1 move where king is safe
 
 	// keep in mind the case that there are no valid pawn moves and the king is forced to move into a loss
 	// TODO: we are just going to accept these false negatives and do the tb lookup on these for now
