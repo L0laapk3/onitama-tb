@@ -7,8 +7,6 @@
 #include <x86intrin.h>
 #include <xmmintrin.h>
 
-#define ALWAYS_INLINE __attribute__((always_inline)) inline 
-
 
 constexpr std::array<U64, 2> PTEMPLE = { 22, 2 };
 
@@ -44,27 +42,27 @@ public:
 
 
 template <U64 player>
-bool ALWAYS_INLINE Board::isTempleKingInRange(const MoveBoard& reverseMoveBoard) {
+bool inline Board::isTempleKingInRange(const MoveBoard& reverseMoveBoard) {
 	// player king can move to temple
 	return reverseMoveBoard[PTEMPLE[player]] & bbk[player];
 }
 
 
 template <U64 player>
-bool ALWAYS_INLINE Board::isTempleFree() {
+bool inline Board::isTempleFree() {
 	// no player piece is blocking the temple.
 	return !(bbp[player] & (1 << PTEMPLE[player]));
 }
 
 
 template <U64 player>
-bool ALWAYS_INLINE Board::isTempleWinInOne(const MoveBoard& reverseMoveBoard) {
+bool inline Board::isTempleWinInOne(const MoveBoard& reverseMoveBoard) {
 	return isTempleKingInRange<player>(reverseMoveBoard) && isTempleFree<player>();
 }
 
 
 template <U64 player>
-U64 ALWAYS_INLINE Board::isKingAttacked(U64 bbk, const MoveBoard& reverseMoveBoard) { // is !player king safe?
+U64 inline Board::isKingAttacked(U64 bbk, const MoveBoard& reverseMoveBoard) { // is !player king safe?
 	U64 pk = _tzcnt_u64(bbk);
 	return reverseMoveBoard[pk] & bbp[player];
 }
@@ -72,12 +70,12 @@ U64 ALWAYS_INLINE Board::isKingAttacked(U64 bbk, const MoveBoard& reverseMoveBoa
 
 
 template <U64 player>
-U64 ALWAYS_INLINE Board::isTakeWinInOne(const MoveBoard& reverseMoveBoard) {
+U64 inline Board::isTakeWinInOne(const MoveBoard& reverseMoveBoard) {
 	return isKingAttacked<player>(bbk[1-player], reverseMoveBoard);
 }
 
 template <U64 player>
-bool ALWAYS_INLINE Board::isWinInOne(const MoveBoard& reverseMoveBoard) {
+bool inline Board::isWinInOne(const MoveBoard& reverseMoveBoard) {
 	if (isTempleWinInOne<player>(reverseMoveBoard))
 		return true;
 	return isTakeWinInOne<player>(reverseMoveBoard);
@@ -85,7 +83,7 @@ bool ALWAYS_INLINE Board::isWinInOne(const MoveBoard& reverseMoveBoard) {
 
 
 template <U64 player>
-bool ALWAYS_INLINE Board::isWinInTwo(const MoveBoard& reversePMoveBoard, const MoveBoard& reverseOtherPMoveBoard) {
+bool inline Board::isWinInTwo(const MoveBoard& reversePMoveBoard, const MoveBoard& reverseOtherPMoveBoard) {
 	// it is the assumption that 2 is the first possible game-ending ply
 	// !player cannot prevent player from winning
 	if (isTempleWinInOne<player>(reversePMoveBoard)) // !player can never prevent temple wins without winning itself earlier
@@ -114,7 +112,7 @@ bool ALWAYS_INLINE Board::isWinInTwo(const MoveBoard& reversePMoveBoard, const M
 
 // optimisation idea: fast check if its even possible at all using precomputed tables
 template <U64 player>
-bool ALWAYS_INLINE Board::isWinInThree(const MoveBoard& reverseMoveBoard, const MoveBoard& reverseMoveBoardcard0, const MoveBoard& reverseMoveBoardcard1, const MoveBoard& forwardOtherPMoveBoard, const MoveBoard& reverseOtherPMoveBoard) {
+bool inline Board::isWinInThree(const MoveBoard& reverseMoveBoard, const MoveBoard& reverseMoveBoardcard0, const MoveBoard& reverseMoveBoardcard1, const MoveBoard& forwardOtherPMoveBoard, const MoveBoard& reverseOtherPMoveBoard) {
 	// any player move for !player cannot prevent player from winning
 	// it is the assumption that 3 is the first possible game-ending ply
 

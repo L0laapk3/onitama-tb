@@ -187,6 +187,9 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 						U64 landMask = kingThreatenPawns ? kingThreatenPawns : ~board.bbp[1];
 						U64 bbp = board.bbp[1] - sourcePiece;
 						U64 pp = _tzcnt_u64(sourcePiece);
+						if (depth == 2) {
+
+						}
 						{ // card 1
 							U64 land = moveBoard0[pp] & landMask;
 							while (land) {
@@ -242,15 +245,16 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 									.bbk = { board.bbk[0], landPiece },
 								};
 
-								if (!targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip)) {
-									if (depth > 2) {
-										U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
-										if ((targetRow0[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
-											continue;
-									}
-									
-									goto notWin;
+								if (targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip))
+									continue;
+
+								if (depth > 2) {
+									U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
+									if ((targetRow0[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
+										continue;
 								}
+									
+								goto notWin;
 							}
 						}
 						{ // card 2
@@ -263,15 +267,16 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 									.bbk = { board.bbk[0], landPiece },
 								};
 
-								if (!targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip)) {
-									if (depth > 2) {
-										U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
-										if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
-											continue;
-									}
-									
-									goto notWin;
+								if (targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip))
+									continue;
+
+								if (depth > 2) {
+									U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
+									if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
+										continue;
 								}
+									
+								goto notWin;
 							}
 						}
 					}
