@@ -159,8 +159,8 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 		auto& row = tb[invCardI];
 		auto permutation = CARDS_PERMUTATIONS[cardI];
 		// forward moves for p1 so reverse moveboards
-		const MoveBoard& moveBoard0 = cards.moveBoardsReverse[permutation.playerCards[1][0]];
 		const MoveBoard& moveBoard1 = cards.moveBoardsReverse[permutation.playerCards[1][1]];
+		const MoveBoard& moveBoard0 = depth > 2 ? cards.moveBoardsReverse[permutation.playerCards[1][0]] : combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[1][0]], moveBoard1);
 		TableBaseRow& targetRow0 = tb[CARDS_SWAP[cardI][1][0]];
 		TableBaseRow& targetRow1 = tb[CARDS_SWAP[cardI][1][1]];
 		const MoveBoard combinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
@@ -213,7 +213,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 										goto notWin;
 									}
 								}
-								{ // card 2
+								if (depth > 2) { // card 2
 									U64 land = moveBoard1[pp] & landMask;
 									while (land) {
 										U64 landPiece = land & -land;
@@ -263,7 +263,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 								goto notWin;
 							}
 						}
-						{ // card 2
+						if (depth > 2) { // card 2
 							U64 land = moveBoard1[pp] & landMask;
 							while (land) {
 								U64 landPiece = land & -land;
