@@ -183,41 +183,39 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 				bool isTempleThreatened = board.isTempleKingInRange<0>(combinedMoveBoardFlip);
 				if (!(isTempleThreatened && board.isTempleFree<0>())) { // if p0 can just walk to temple
 					U64 kingThreatenPawns = board.isTakeWinInOne<0>(combinedMoveBoardFlip);
-					if (!isTempleThreatened || (kingThreatenPawns & PTEMPLE[0]) == 0) { // if p0 is threatening p1 king, with a pawn on p0 temple and also threatening temple win
-						U64 scan = board.bbp[1] & ~board.bbk[1];
-						while (scan) { // pawn moves
-							U64 sourcePiece = scan & -scan;
-							U64 landMask = kingThreatenPawns ? kingThreatenPawns : ~board.bbp[1];
-							U64 bbp = board.bbp[1] - sourcePiece;
-							U64 pp = _tzcnt_u64(sourcePiece);
-							U64 land = combinedOtherMoveBoardFlip[pp] & landMask;
-							if (depth == 2) {
-								if (land)
-									goto notWin;
-							} else {
-								while (land) {
-									U64 landPiece = land & -land;
-									land &= land - 1;
-									Board targetBoard{
-										.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
-										.bbk = { board.bbk[0], board.bbk[1] },
-									};
+					U64 scan = board.bbp[1] & ~board.bbk[1];
+					while (scan) {
+						U64 sourcePiece = scan & -scan;
+						U64 landMask = kingThreatenPawns ? kingThreatenPawns : ~board.bbp[1];
+						U64 bbp = board.bbp[1] - sourcePiece;
+						U64 pp = _tzcnt_u64(sourcePiece);
+						U64 land = combinedOtherMoveBoardFlip[pp] & landMask;
+						if (depth == 2) {
+							if (land)
+								goto notWin;
+						} else {
+							while (land) {
+								U64 landPiece = land & -land;
+								land &= land - 1;
+								Board targetBoard{
+									.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
+									.bbk = { board.bbk[0], board.bbk[1] },
+								};
 
-									U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
-										
-									bool oneTrue = false;
-									if (landPiece & moveBoard0[pp]) {
-										oneTrue = true;
-										if ((targetRow0[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) == 0)
-											goto notWin;
-									}
-									if (!oneTrue || landPiece & moveBoard1[pp])
-										if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) == 0)
-											goto notWin;
+								U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
+									
+								bool oneTrue = false;
+								if (landPiece & moveBoard0[pp]) {
+									oneTrue = true;
+									if ((targetRow0[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) == 0)
+										goto notWin;
 								}
+								if (!oneTrue || landPiece & moveBoard1[pp])
+									if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) == 0)
+										goto notWin;
 							}
-							scan &= scan - 1;
 						}
+						scan &= scan - 1;
 					}
 					{ // king move
 						U64 sourcePiece = board.bbk[1];
