@@ -59,8 +59,10 @@ bool inline Board::isTempleWinInOne(const MoveBoard& reverseMoveBoard) {
 }
 
 
+// is !player king safe?
+// is player attacking !players king?
 template <U64 player>
-U64 inline Board::isKingAttacked(U64 bbk, const MoveBoard& reverseMoveBoard) { // is !player king safe?
+U64 inline Board::isKingAttacked(U64 bbk, const MoveBoard& reverseMoveBoard) {
 	U64 pk = _tzcnt_u64(bbk);
 	return reverseMoveBoard[pk] & bbp[player];
 }
@@ -69,7 +71,7 @@ U64 inline Board::isKingAttacked(U64 bbk, const MoveBoard& reverseMoveBoard) { /
 
 template <U64 player>
 U64 inline Board::isTakeWinInOne(const MoveBoard& reverseMoveBoard) {
-	return isKingAttacked<player>(bbk[1-player], reverseMoveBoard);
+	return isKingAttacked<player>(bbk[!player], reverseMoveBoard);
 }
 
 template <U64 player>
@@ -87,17 +89,22 @@ bool inline Board::isWinInTwo(const MoveBoard& reversePMoveBoard, const MoveBoar
 	if (isTempleWinInOne<player>(reversePMoveBoard)) // !player can never prevent temple wins without winning itself earlier
 		return true;
 
+	//TODO: if player pawn is on the temple square, threatening the !player king. and player king is threatening temple, !player cannot take it.
+
+	// TODO: !player pieces can attack players pawns that threaten !player king!!!!!
+
 	// temple player wins have been taken care of. All we have to do now is make sure !player has at least 1 move where king is safe
 
 	// keep in mind the case that there are no valid pawn moves and the king is forced to move into a loss
-	// TODO: we are just going to accept these false negatives and do the tb lookup on these for now
+	// TODO: we are just going to accept these false negatives and do the tb lookup on these for now, inspect perfect way later
 	bool forcedToMove = false;
 
 	if (!forcedToMove)
-		if (!isKingAttacked<player>(bbk[1-player], reversePMoveBoard))
+		if (!isKingAttacked<player>(bbk[!player], reversePMoveBoard))
 			return false;
 
-	U64 possibleKingPositions = reverseOtherPMoveBoard[_tzcnt_u64(bbk[1-player])];
+	// reverse moveboard cuz its the other player. check all forward king positions
+	U64 possibleKingPositions = reverseOtherPMoveBoard[_tzcnt_u64(bbk[!player])];
 	while (possibleKingPositions) {
 		if (!isKingAttacked<player>(possibleKingPositions, reversePMoveBoard))
 			return false;
