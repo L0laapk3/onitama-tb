@@ -204,16 +204,14 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 											.bbk = { board.bbk[0], board.bbk[1] },
 										};
 
-										if (depth > 2) {
-											U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
-											if ((targetRow0[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
-												continue;
-										}
+										U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
+										if ((targetRow0[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
+											continue;
 										
 										goto notWin;
 									}
 								}
-								if (depth > 2) { // card 2
+								{ // card 2
 									U64 land = moveBoard1[pp] & landMask;
 									while (land) {
 										U64 landPiece = land & -land;
@@ -223,11 +221,9 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 											.bbk = { board.bbk[0], board.bbk[1] },
 										};
 											
-										if (depth > 2) {
-											U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
-											if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
-												continue;
-										}
+										U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
+										if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
+											continue;
 										
 										goto notWin;
 									}
@@ -276,11 +272,9 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 								if (targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip))
 									continue;
 
-								if (depth > 2) {
-									U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
-									if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
-										continue;
-								}
+								U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
+								if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
+									continue;
 									
 								goto notWin;
 							}
