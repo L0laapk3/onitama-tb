@@ -190,43 +190,30 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							U64 landMask = kingThreatenPawns ? kingThreatenPawns : ~board.bbp[1];
 							U64 bbp = board.bbp[1] - sourcePiece;
 							U64 pp = _tzcnt_u64(sourcePiece);
+							U64 land = combinedOtherMoveBoardFlip[pp] & landMask;
 							if (depth == 2) {
-								if (combinedOtherMoveBoardFlip[pp] & landMask)
+								if (land)
 									goto notWin;
 							} else {
-								{ // card 1
-									U64 land = moveBoard0[pp] & landMask;
-									while (land) {
-										U64 landPiece = land & -land;
-										land &= land - 1;
-										Board targetBoard{
-											.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
-											.bbk = { board.bbk[0], board.bbk[1] },
-										};
+								while (land) {
+									U64 landPiece = land & -land;
+									land &= land - 1;
+									Board targetBoard{
+										.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
+										.bbk = { board.bbk[0], board.bbk[1] },
+									};
 
-										U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
-										if ((targetRow0[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
-											continue;
+									U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
 										
-										goto notWin;
+									bool oneTrue = false;
+									if (landPiece & moveBoard0[pp]) {
+										oneTrue = true;
+										if ((targetRow0[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) == 0)
+											goto notWin;
 									}
-								}
-								{ // card 2
-									U64 land = moveBoard1[pp] & landMask;
-									while (land) {
-										U64 landPiece = land & -land;
-										land &= land - 1;
-										Board targetBoard{
-											.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
-											.bbk = { board.bbk[0], board.bbk[1] },
-										};
-											
-										U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
-										if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
-											continue;
-										
-										goto notWin;
-									}
+									if (!oneTrue || landPiece & moveBoard1[pp])
+										if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) == 0)
+											goto notWin;
 								}
 							}
 							scan &= scan - 1;
@@ -237,47 +224,33 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 						U64 landMask = ~board.bbp[1];
 						U64 bbp = board.bbp[1] - sourcePiece;
 						U64 pp = _tzcnt_u64(sourcePiece);
-						{ // card 1
-							U64 land = moveBoard0[pp] & landMask;
-							while (land) {
-								U64 landPiece = land & -land;
-								land &= land - 1;
-								Board targetBoard{
-									.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
-									.bbk = { board.bbk[0], landPiece },
-								};
+						U64 land = combinedOtherMoveBoardFlip[pp] & landMask;
+						while (land) {
+							U64 landPiece = land & -land;
+							land &= land - 1;
+							Board targetBoard{
+								.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
+								.bbk = { board.bbk[0], landPiece },
+							};
 
-								if (targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip))
-									continue;
+							if (targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip))
+								continue;
 
-								if (depth > 2) {
-									U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
-									if ((targetRow0[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
-										continue;
-								}
-									
+							if (depth == 2)
 								goto notWin;
-							}
-						}
-						if (depth > 2) { // card 2
-							U64 land = moveBoard1[pp] & landMask;
-							while (land) {
-								U64 landPiece = land & -land;
-								land &= land - 1;
-								Board targetBoard{
-									.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
-									.bbk = { board.bbk[0], landPiece },
-								};
 
-								if (targetBoard.isTakeWinInOne<false>(combinedMoveBoardFlip))
-									continue;
+							U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
 
-								U64 targetIndex = boardToIndex<false>(targetBoard); // the resulting board has p0 to move and needs to be a win
-								if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) != 0)
-									continue;
-									
-								goto notWin;
+							bool oneTrue = false;
+							if (landPiece & moveBoard0[pp]) {
+								oneTrue = true;
+								if ((targetRow0[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) == 0)
+									goto notWin;
 							}
+								
+							if (!oneTrue || (landPiece & moveBoard1[pp]))
+								if ((targetRow1[targetIndex / 32].load(std::memory_order_relaxed) & (1ULL << (targetIndex % 32))) == 0)
+									goto notWin;
 						}
 					}
 				}
