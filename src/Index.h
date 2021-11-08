@@ -15,6 +15,7 @@
 #include <iostream>
 #include <bitset>
 #include <algorithm>
+#include <bitset>
 
 
 // #define NO_INLINE_INDEX
@@ -249,7 +250,29 @@ U64 INLINE_INDEX_FN boardToIndex_pawns_A(Board board) {
 	}
 
 	U64 bbpp = board.bbp[player] - board.bbk[player];
+#ifdef USE_PDEP
 	U64 bbpc = _pext_u64(bbpp, (player ? ~board.bbp[0] : ~board.bbk[0]) & ~board.bbk[1]); // P0 pawns skip over kings, P1 pawns skip over kings and P0 pawns
+#else
+	U64 bbpc = bbpp;
+	if (!player) {
+		U64 bbkmin = std::min(board.bbk[0], board.bbk[1]), bbkmax = std::max(board.bbk[0], board.bbk[1]);
+		bbpc = (bbpc & (bbkmin - 1)) | ((bbpc & ~(bbkmin - 1)) >> 1);
+		bbpc = (bbpc & (bbkmax - 1)) | ((bbpc & ~(bbkmax - 1)) >> 1);
+	} else {
+		U64 bbmask = board.bbp[0] | board.bbk[1];
+		#pragma unroll
+		for (int i = 0; i < TB_MEN / 2; i++) {
+			U64 bb = bbmask & -bbmask;
+			bbmask ^= bb;
+			bbpc = ((bbpc & (bb - 1)) << 1) | (bbpc & ~(bb - 1));
+		}
+		{
+			U64 bb = bbmask;
+			bbpc = ((bbpc & (bb - 1)) << 1) | (bbpc & ~(bb - 1));
+		}
+		bbpc >>= TB_MEN / 2 + 1;
+	}
+#endif
 
 	return bbpc;
 }
@@ -397,8 +420,33 @@ Board INLINE_INDEX_FN indexToBoard(U64 index) {
 	U64 bbk0, bbk1;
 	std::tie(bbk0, bbk1) = TABLES_BBKINGS[invert][bbStuff.ik];
 
+#ifdef USE_PDEP
 	U64 bbp0 = _pdep_u64(bbStuff.bbpc0, ~bbk0 & ~bbk1) | bbk0; // P0 pawns skip over kings
 	U64 bbp1 = _pdep_u64(bbStuff.bbpc1, ~bbk1 & ~bbp0) | bbk1; // P1 pawns skip over kings and P0 pawns
+#else
+    U64 bbp0 = bbStuff.bbpc0;
+	// U64 bbks = bbk0 | bbk1;
+	// U64 bbkmin = (bbks & -bbks) - 1;
+	// U64 bbkmax = (bbks & bbks - 1) - 1;
+	U64 bbkmin = std::min(bbk0, bbk1), bbkmax = std::max(bbk0, bbk1);
+    bbp0 = (bbp0 & (bbkmin - 1)) | ((bbp0 & ~(bbkmin - 1)) << 1);
+    bbp0 = (bbp0 & (bbkmax - 1)) | ((bbp0 & ~(bbkmax - 1)) << 1);
+	bbp0 |= bbk0;
+
+	U64 bbp1 = bbStuff.bbpc1;
+	U64 bbmask = bbp0 | bbk1;
+	#pragma unroll 
+	for (int i = 0; i < TB_MEN / 2; i++) {
+		U64 bb = bbmask & -bbmask;
+		bbmask ^= bb;
+		bbp1 = (bbp1 & (bb - 1)) | ((bbp1 & ~(bb - 1)) << 1);
+	}
+	{
+		U64 bb = bbmask;
+		bbp1 = (bbp1 & (bb - 1)) | ((bbp1 & ~(bb - 1)) << 1);
+	}
+	bbp1 |= bbk1;
+#endif
 	
 	if (invert) {
 		std::swap(bbp0, bbp1);
