@@ -31,7 +31,7 @@
 constexpr U64 KINGSMULT = 24 + 23*23;
 
 constexpr auto PIECES1MULT = [](){
-	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a;
+	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a{};
 	for (int p0 = 0; p0 < TB_MEN/2; p0++)
 		for (int p1 = 0; p1 < TB_MEN/2; p1++)
 			a[p0][p1] = fact(23-p0, 23-p0-p1) / fact(p1);
@@ -39,14 +39,14 @@ constexpr auto PIECES1MULT = [](){
 }();
 #define PIECES0MULT PIECES1MULT[0]
 constexpr auto PIECES10MULT = [](){
-	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a;
+	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a{};
 	for (int p0 = 0; p0 < TB_MEN/2; p0++)
 		for (int p1 = 0; p1 < TB_MEN/2; p1++)
 			a[p0][p1] = PIECES0MULT[p0] * PIECES1MULT[p0][p1];
 	return a;
 }();
 constexpr auto PIECES10KMULT = [](){
-	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a;
+	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a{};
 	for (int p0 = 0; p0 < TB_MEN/2; p0++)
 		for (int p1 = 0; p1 < TB_MEN/2; p1++)
 			a[p0][p1] = KINGSMULT * PIECES0MULT[p0] * PIECES1MULT[p0][p1];
@@ -54,7 +54,7 @@ constexpr auto PIECES10KMULT = [](){
 }();
 
 constexpr auto OFFSET_ORDER = []() {
-	std::array<std::pair<U64, U64>, TB_MEN/2 * TB_MEN/2> a;
+	std::array<std::pair<U64, U64>, TB_MEN/2 * TB_MEN/2> a{};
     int index = 0;
 	for (int i = TB_MEN - 1; i-- > 0; )
         for (int j = i % 2; j <= TB_MEN; j += 2)
@@ -70,7 +70,7 @@ constexpr auto OFFSET_ORDER = []() {
 }();
 template<bool includeSelf>
 constexpr auto GENERATE_TABLE_SIZES() {
-	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a;
+	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a{};
     U64 offset_cumul = 0;
 	for (auto& pc : OFFSET_ORDER) {
 		if (!includeSelf) a[pc.first][pc.second] = offset_cumul;
@@ -87,7 +87,7 @@ constexpr auto MAX_INDEX = GENERATE_TABLE_SIZES<true>().first;
 
 
 constexpr auto OFFSETS_SUB_EMPTY = [](){
-	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a;
+	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a{};
 	for (int p0c = 0; p0c < TB_MEN/2; p0c++) {
 		for (int p1c = 0; p1c < TB_MEN/2; p1c++) {
 			U64 offset = OFFSETS[p0c][p1c];
@@ -119,7 +119,7 @@ constexpr auto TABLE_TWOKINGS = [](){
     return a;
 }();
 constexpr auto TABLES_BBKINGS = [](){
-	std::array<std::array<std::pair<U32, U32>, KINGSMULT>, 2> a;
+	std::array<std::array<std::pair<U32, U32>, KINGSMULT>, 2> a{};
 	for (U64 inv = 0; inv < 2; inv++) {
 		U32 i = 0;
 		for (int j = 0; j < 25; j++)
@@ -157,7 +157,7 @@ constexpr void GENERATE_PAWN_TABLE_PAWN(U32 bb, int remaining, std::array<U32, s
 template<int pawns, bool invert>
 constexpr auto GENERATE_PAWN_TABLE() {
 	const U64 size = fact(23, 23-pawns) / fact(pawns);
-	std::array<U32, size> a;
+	std::array<U32, size> a{};
 	GENERATE_PAWN_TABLE_PAWN<pawns, size, invert>(0, pawns, a, { 0 }, 0);
     return a;
 };
@@ -200,7 +200,7 @@ constexpr auto TABLE_TWOPAWNS_INV = GENERATE_PAWN_TABLE<2, true>();
 
 #if TB_MEN >= 10
 constexpr auto MULTABLE4 = [](){
-	std::array<U64, 30> a;
+	std::array<U64, 30> a{};
 	for (int i = 0; i < 30; i++) {
 		U64 v = i + 3;
 		a[i] = v * (v - 1) * (v - 2) * (v - 3) / 24;
@@ -210,7 +210,7 @@ constexpr auto MULTABLE4 = [](){
 #endif
 #if TB_MEN >= 8
 constexpr auto MULTABLE3 = [](){
-	std::array<U64, 31> a;
+	std::array<U64, 31> a{};
 	for (int i = 0; i < 31; i++) {
 		U64 v = i + 2;
 		a[i] = v * (v - 1) * (v - 2) / 6;
@@ -219,7 +219,7 @@ constexpr auto MULTABLE3 = [](){
 }();
 #endif
 constexpr auto MULTABLE2 = [](){
-	std::array<U64, 32> a;
+	std::array<U64, 32> a{};
 	for (U64 i = 0; i < 32; i++) {
 		U64 v = i + 1;
 		a[i] = v * (v - 1) / 2;
