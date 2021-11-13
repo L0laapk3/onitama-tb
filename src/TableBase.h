@@ -12,4 +12,4 @@
 typedef std::valarray<std::atomic<U64>> TableBaseRow;
 typedef std::array<TableBaseRow, CARDSMULT * PIECECOUNTMULT * KINGSMULT> TableBase;
 
-TableBase generateTB(const CardsInfo& cards);
+void generateTB(const CardsInfo& cards);

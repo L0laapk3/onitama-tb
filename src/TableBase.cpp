@@ -1,74 +1,83 @@
-// #include "TableBase.h"
+#include "TableBase.h"
 
-// #include "Board.h"
-// #include "Index.h"
-// #include "Card.hpp"
-// #include "Config.h"
+#include "Board.h"
+#include "Index.h"
+#include "Card.hpp"
+#include "Config.h"
 
-// #include <vector>
-// #include <atomic>
-// #include <algorithm>
-// #include <thread>
-// #include <chrono>
-// #include <iostream>
-// #include <cassert>
-// #include <immintrin.h>
-// #include <x86intrin.h>
-
-
-// constexpr U64 NUM_CHUNKS_PER_CARD = TB_ROW_SIZE / (1ULL << 18);
-// constexpr U64 NUM_CHUNKS_PER_PAIR = NUM_CHUNKS_PER_CARD * 3;
-// constexpr U64 NUM_CHUNKS = NUM_CHUNKS_PER_CARD * 30;
+#include <vector>
+#include <atomic>
+#include <algorithm>
+#include <thread>
+#include <chrono>
+#include <iostream>
+#include <cassert>
+#include <immintrin.h>
+#include <x86intrin.h>
 
 
+constexpr U64 NUM_CHUNKS_PER_CARD = TB_ROW_SIZE / (1ULL << 18);
+constexpr U64 NUM_CHUNKS_PER_PAIR = NUM_CHUNKS_PER_CARD * 3;
+constexpr U64 NUM_CHUNKS = NUM_CHUNKS_PER_CARD * 30;
 
 
-// void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
-// template<int depth>
-// void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
-
-// TableBase generateTB(const CardsInfo& cards) {
 
 
-// 	TableBase tb;
-// 	U64 cnt_0 = 0;
-// 	U64 totalSize = 0;
-// 	BoardIndex bi;
-// 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
-// 		auto permutation = CARDS_PERMUTATIONS[cardI];
-// 		const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
-// 		const MoveBoard forwardOtherMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[0][0]], cards.moveBoardsForward[permutation.playerCards[0][1]]);
-// 		const auto& startMoveBoard = startInv ? forwardOtherMoveBoard : reverseMoveBoard;
-// 		const auto& endMoveBoard = endInv ? forwardOtherMoveBoard : reverseMoveBoard;
-// 		for (U64 pieceCountI = 0; pieceCountI < PIECECOUNTMULT; pieceCountI++) {
-// 			auto& pc = OFFSET_ORDER[pieceCountI];
-// 			for (U64 kingI = 0; kingI < KINGSMULT; kingI++) {
-// 				bi.cardsPieceCntKingsIndex = (cardI * PIECECOUNTMULT + pieceCountI) * KINGSMULT + kingI;
+void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
+template<int depth>
+void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
 
-// 				U64 bbk0, bbk1;
-// 				std::tie(bbk0, bbk1) = TABLES_BBKINGS[startInv][kingI];
-// 				U64 ik1 = startInv ? _lzcnt_u64(bbk1) - 39 : _tzcnt_u64(bbk1);
+void generateTB(const CardsInfo& cards) {
 
-// 				U64 p0mask = bbk0 | bbk1 | startMoveBoard[startInv ? 24 - ik1 : ik1];
 
-// 				bool templeWinThreatened = startMoveBoard[PTEMPLE[!startInv]] & bbk0;
-// 				if (templeWinThreatened)
-// 					p0mask |= 1 << PTEMPLE[!startInv];
+	// TableBase tb;
+	U64 cnt_0 = 0;
+	U64 totalSize = 0;
+	BoardIndex bi;
+	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
+		auto permutation = CARDS_PERMUTATIONS[cardI];
+		const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
+		for (U64 pieceCountI = 0; pieceCountI < PIECECOUNTMULT; pieceCountI++) {
+			auto& pc = OFFSET_ORDER[pieceCountI];
+			for (U64 kingI = 0; kingI < KINGSMULT; kingI++) {
+				bi.cardsPieceCntKingsIndex = (cardI * PIECECOUNTMULT + pieceCountI) * KINGSMULT + kingI;
+				U64 rowSize;
 
-// 				U64 p0Options = 25 - _popcnt64(p0mask);
-// 				U64 p0Combinations = templeWinThreatened && !pc.first ? 0 : fact(p0Options, p0Options-(pc.first-templeWinThreatened)) / fact(pc.first-templeWinThreatened);
-// 				U64 p1Combinations = fact(23-pc.first, 23-pc.first-pc.second) / fact(pc.second);
-// 				U64 rowSize = p0Combinations * p1Combinations;
-// 				totalSize += rowSize;
+				U64 bbk0, bbk1;
+				std::tie(bbk0, bbk1) = TABLES_BBKINGS[0][kingI];
+				U64 ik1 = _tzcnt_u64(bbk1);
+
+				U64 p0mask = bbk0 | bbk1 | reverseMoveBoard[ik1];
+
+				if (reverseMoveBoard[ik1] & bbk0)
+					rowSize = 0;
+				else {
+					bool templeWinThreatened = reverseMoveBoard[PTEMPLE[0]] & bbk0;
+					if (templeWinThreatened && ((pc.first == 0) || (reverseMoveBoard[ik1] & (1 << PTEMPLE[0]))))
+						rowSize = 0;
+					else {
+						if (templeWinThreatened)
+							p0mask |= 1 << PTEMPLE[0];
+
+						U64 p0Options = 25 - _popcnt64(p0mask);
+						U64 p0Combinations = fact(p0Options, p0Options-(pc.first-templeWinThreatened)) / fact(pc.first-templeWinThreatened);
+						U64 p1Combinations = fact(23-pc.first, 23-pc.first-pc.second) / fact(pc.second);
+						rowSize = p0Combinations * p1Combinations;
+					}
+				}
+
+				// std::cout << cardI << '\t' << pc.first << ' ' << pc.second << '\t' << kingI << '\t' << rowSize << std::endl;
+				totalSize += rowSize;
 				
-// 				U64 rowEntries = (rowSize + 31) / 32;
-// 				row = TableBaseRow(rowEntries);
-// 				row[rowEntries - 1] = (1ULL << 32) - (1ULL << (((rowSize + 31) % 32) + 1)); // mark final rows as resolved so we dont have to worry about it
-// 				cnt_0 -= _popcnt64(row[rowEntries - 1]);
-// 			}
-// 		}
-// 	}
-// 	std::cout << "Total size: " << totalSize << std::endl;
+				// U64 rowEntries = (rowSize + 31) / 32;
+				// auto& row = tb[bi.cardsPieceCntKingsIndex];
+				// row = TableBaseRow(rowEntries);
+				// row[rowEntries - 1] = (1ULL << 32) - (1ULL << (((rowSize + 31) % 32) + 1)); // mark final rows as resolved so we dont have to worry about it
+				// cnt_0 -= _popcnt64(row[rowEntries - 1]);
+			}
+		}
+	}
+	std::cout << "Total size: " << totalSize << std::endl;
 
 // 	const U64 numThreads = std::clamp<U64>(std::thread::hardware_concurrency(), 1, 1024);
 // 	std::vector<std::thread> threads(numThreads);
@@ -120,8 +129,8 @@
 // 			cnt += _popcnt32(val);
 // 	printf("found %llu boards in %.3fs/%.3fs\n", cnt, totalTime, totalInclusiveTime);
 
-// 	return tb;
-// }
+	// return tb;
+}
 
 
 

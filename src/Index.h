@@ -18,7 +18,7 @@
 #include <bitset>
 
 
-// #define NO_INLINE_INDEX
+#define NO_INLINE_INDEX
 
 #ifdef NO_INLINE_INDEX
 	#define INLINE_INDEX_FN __attribute__((noinline))
@@ -274,6 +274,27 @@ U64 INLINE_INDEX_FN boardToIndex_compactPawnBitboard(U64 bbp, U64 mask) {
 #endif
 }
 
+template <int maskMaxBits>
+U64 INLINE_INDEX_FN indexToBoard_decompactPawnBitboard(U64 bbp, U64 mask) {
+#ifdef USE_PDEP
+	return _pdep_u64(bbp, ~mask);
+#else
+	#pragma unroll 
+	for (int i = 0; i < maskMaxBits - 1; i++) {
+		U64 bb = mask & -mask;
+		mask ^= bb;
+		bbp = (bbp & (bb - 1)) | ((bbp & ~(bb - 1)) << 1);
+	}
+	{
+		U64 bb = mask;
+		bbp = (bbp & (bb - 1)) | ((bbp & ~(bb - 1)) << 1);
+	}
+	return bbp;
+#endif
+}
+
+
+
 template <bool invert>
 U32 INLINE_INDEX_FN boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
 
@@ -332,11 +353,11 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	// prevent king wins: any squares threatening the p1 king need to be masked out for p0.
 	U64 p0CompactMask = board.bbk[0] | board.bbk[1] | reverseMoveBoard[invert ? 24 - ik1 : ik1];
 	// prevent temple wins: if p0 king is threatening temple win, one pawn needs to block the temple.
-	bool templeWin = reverseMoveBoard[PTEMPLE[!invert]] & board.bbk[0];
+	bool templeWin = reverseMoveBoard[PTEMPLE[invert]] & board.bbk[0];
 	if (templeWin) {
-		assert(board.bbp[0] & (1 << PTEMPLE[!invert]));
-		board.bbp[0] ^= (1 << PTEMPLE[!invert]);
-		p0CompactMask |= (1 << PTEMPLE[!invert]);
+		assert(board.bbp[0] & (1 << PTEMPLE[invert]));
+		board.bbp[0] ^= (1 << PTEMPLE[invert]);
+		p0CompactMask |= (1 << PTEMPLE[invert]);
 	}
 	U64 bbpc0 = boardToIndex_compactPawnBitboard<7>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces
 
@@ -355,51 +376,6 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 
 
 
-template <int maskMaxBits>
-U64 INLINE_INDEX_FN indexToBoard_decompactPawnBitboard(U64 bbp, U64 mask) {
-#ifdef USE_PDEP
-	return _pdep_u64(bbp, ~mask);
-#else
-	#pragma unroll 
-	for (int i = 0; i < maskMaxBits - 1; i++) {
-		U64 bb = mask & -mask;
-		mask ^= bb;
-		bbp = (bbp & (bb - 1)) | ((bbp & ~(bb - 1)) << 1);
-	}
-	{
-		U64 bb = mask;
-		bbp = (bbp & (bb - 1)) | ((bbp & ~(bb - 1)) << 1);
-	}
-	return bbp;
-#endif
-}
-
-// struct FromIndexHalfReturn {
-// 	U64 ik;
-// 	U64 bbpc0;
-// 	U64 bbpc1;
-// };
-// template <bool invert, int p0c, int p1c>
-// FromIndexHalfReturn INLINE_INDEX_FN indexToBoard_indexToPawnBitboard(U64 index) {
-// 	index -= OFFSETS[p0c][p1c];
-// 	constexpr U64 p0mult = PIECES0MULT[p0c];
-// 	constexpr U64 p1mult = PIECES1MULT[p0c][p1c];
-
-// 	U64 ip0 = index % p0mult;
-// 	index /= p0mult;
-// 	U64 ip1 = index % p1mult;
-// 	U64 ik = index / p1mult;
-
-// 	// if (ik == 0)
-// 	// 	std::cout << p0c << " " << p1c << " " << ik << " " << ip0 << " " << ip1 << std::endl;
-// 	// assert(ik != 0 || ip0 != 210);
-
-// 	return {
-// 		.ik = ik,
-// 		.bbpc0 = *(PAWNTABLE_POINTERS[invert][p0c] + ip0),
-// 		.bbpc1 = *(PAWNTABLE_POINTERS[invert][p1c] + ip1) >> (invert ? p0c : 0),
-// 	};
-// }
 
 
 
@@ -417,9 +393,9 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 
 	U64 p0CompactMask = bbk0 | bbk1 | reverseMoveBoard[invert ? 24 - ik1 : ik1];
 
-	bool templeWin = reverseMoveBoard[PTEMPLE[!invert]] & bbk0;
+	bool templeWin = reverseMoveBoard[PTEMPLE[invert]] & bbk0;
 	if (templeWin) {
-		p0CompactMask |= 1ULL << PTEMPLE[!invert];
+		p0CompactMask |= 1ULL << PTEMPLE[invert];
 	}
 
 	auto [p0c, p1c] = OFFSET_ORDER[rpc];
@@ -436,7 +412,7 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 	U64 bbp0 = indexToBoard_decompactPawnBitboard<7>(bbpc0, p0CompactMask) | bbk0; // P0 pawns skip over kings
 
 	if (templeWin)
-		bbp0 |= 1ULL << PTEMPLE[!invert];
+		bbp0 |= 1ULL << PTEMPLE[invert];
 	U64 bbp1 = indexToBoard_decompactPawnBitboard<TB_MEN/2 + 1>(bbpc1, bbk1 | bbp0) | bbk1; // P1 pawns skip over kings and P0 pawns
 
 	assert(bbp0 < (1 << 25));

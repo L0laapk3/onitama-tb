@@ -8,7 +8,7 @@
 int main(int, char**) {
     
 	constexpr CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB };
-    if (1) {
+    if (0) {
         testIndexing(CARDS);
         return 0;
     } else {
