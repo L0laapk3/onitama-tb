@@ -18,7 +18,7 @@
 #include <bitset>
 
 
-#define NO_INLINE_INDEX
+// #define NO_INLINE_INDEX
 
 #ifdef NO_INLINE_INDEX
 	#define INLINE_INDEX_FN __attribute__((noinline))

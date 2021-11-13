@@ -33,27 +33,30 @@
 // 	TableBase tb;
 // 	U64 cnt_0 = 0;
 // 	U64 totalSize = 0;
+// 	BoardIndex bi;
 // 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
 // 		auto permutation = CARDS_PERMUTATIONS[cardI];
 // 		const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
+// 		const MoveBoard forwardOtherMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[0][0]], cards.moveBoardsForward[permutation.playerCards[0][1]]);
+// 		const auto& startMoveBoard = startInv ? forwardOtherMoveBoard : reverseMoveBoard;
+// 		const auto& endMoveBoard = endInv ? forwardOtherMoveBoard : reverseMoveBoard;
 // 		for (U64 pieceCountI = 0; pieceCountI < PIECECOUNTMULT; pieceCountI++) {
 // 			auto& pc = OFFSET_ORDER[pieceCountI];
 // 			for (U64 kingI = 0; kingI < KINGSMULT; kingI++) {
-// 				U64 rowIndex = (cardI * PIECECOUNTMULT + pieceCountI) * KINGSMULT + kingI;
-// 				auto& row = tb[rowIndex];
-// COPY FROM INDEX.CPP
+// 				bi.cardsPieceCntKingsIndex = (cardI * PIECECOUNTMULT + pieceCountI) * KINGSMULT + kingI;
+
 // 				U64 bbk0, bbk1;
-// 				std::tie(bbk0, bbk1) = TABLES_BBKINGS[0][kingI];
-// 				U64 ik1 = _tzcnt_u64(bbk1);
+// 				std::tie(bbk0, bbk1) = TABLES_BBKINGS[startInv][kingI];
+// 				U64 ik1 = startInv ? _lzcnt_u64(bbk1) - 39 : _tzcnt_u64(bbk1);
 
-// 				U64 p0mask = bbk0 | bbk1 | reverseMoveBoard[ik1];
+// 				U64 p0mask = bbk0 | bbk1 | startMoveBoard[startInv ? 24 - ik1 : ik1];
 
-// 				bool templeWinThreatened = reverseMoveBoard[PTEMPLE[0]] & bbk0;
+// 				bool templeWinThreatened = startMoveBoard[PTEMPLE[!startInv]] & bbk0;
 // 				if (templeWinThreatened)
-// 					p0mask |= PTEMPLE[0];
+// 					p0mask |= 1 << PTEMPLE[!startInv];
 
 // 				U64 p0Options = 25 - _popcnt64(p0mask);
-// 				U64 p0Combinations = fact(p0Options, p0Options-pc.first) / fact(pc.first - templeWinThreatened);
+// 				U64 p0Combinations = templeWinThreatened && !pc.first ? 0 : fact(p0Options, p0Options-(pc.first-templeWinThreatened)) / fact(pc.first-templeWinThreatened);
 // 				U64 p1Combinations = fact(23-pc.first, 23-pc.first-pc.second) / fact(pc.second);
 // 				U64 rowSize = p0Combinations * p1Combinations;
 // 				totalSize += rowSize;

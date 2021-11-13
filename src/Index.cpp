@@ -21,23 +21,25 @@ void testOne(const CardsInfo& cards) {
 		const auto& endMoveBoard = endInv ? forwardOtherMoveBoard : reverseMoveBoard;
 		for (U64 pieceCountI = 0; pieceCountI < PIECECOUNTMULT; pieceCountI++) {
 			auto& pc = OFFSET_ORDER[pieceCountI];
-			for (U64 kingI = 17; kingI < KINGSMULT; kingI++) {
+			for (U64 kingI = 0; kingI < KINGSMULT; kingI++) {
 				bi.cardsPieceCntKingsIndex = (cardI * PIECECOUNTMULT + pieceCountI) * KINGSMULT + kingI;
 
 				U64 bbk0, bbk1;
-				std::tie(bbk0, bbk1) = TABLES_BBKINGS[startInv][kingI];
-				U64 ik1 = startInv ? _lzcnt_u64(bbk1) - 39 : _tzcnt_u64(bbk1);
+				std::tie(bbk0, bbk1) = TABLES_BBKINGS[0][kingI];
+				U64 ik1 = _tzcnt_u64(bbk1);
 
-				U64 p0mask = bbk0 | bbk1 | startMoveBoard[startInv ? 24 - ik1 : ik1];
+				U64 p0mask = bbk0 | bbk1 | reverseMoveBoard[ik1];
 
-				bool templeWinThreatened = startMoveBoard[PTEMPLE[!startInv]] & bbk0;
+				bool templeWinThreatened = reverseMoveBoard[PTEMPLE[1]] & bbk0;
 				if (templeWinThreatened)
-					p0mask |= 1 << PTEMPLE[!startInv];
+					p0mask |= 1 << PTEMPLE[1];
 
 				U64 p0Options = 25 - _popcnt64(p0mask);
 				U64 p0Combinations = templeWinThreatened && !pc.first ? 0 : fact(p0Options, p0Options-(pc.first-templeWinThreatened)) / fact(pc.first-templeWinThreatened);
 				U64 p1Combinations = fact(23-pc.first, 23-pc.first-pc.second) / fact(pc.second);
 				U64 rowSize = p0Combinations * p1Combinations;
+
+				// std::cout << cardI << '\t' << pieceCountI << '\t' << kingI << " (" << _tzcnt_u64(bbk0) << ' ' << ik1 << ")\t" << p0Combinations << std::endl;
 
 				for (bi.pieceIndex = 0; bi.pieceIndex < rowSize; bi.pieceIndex++) {
 					Board board = indexToBoard<startInv>(bi, startMoveBoard, cardI);
