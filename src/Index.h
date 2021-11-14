@@ -18,7 +18,11 @@
 #include <bitset>
 
 
+<<<<<<< HEAD
 #define NO_INLINE_INDEX
+=======
+//  #define NO_INLINE_INDEX
+>>>>>>> master
 
 #ifdef NO_INLINE_INDEX
 	#define INLINE_INDEX_FN __attribute__((noinline))
@@ -261,14 +265,11 @@ U64 INLINE_INDEX_FN boardToIndex_compactPawnBitboard(U64 bbp, U64 mask) {
 	U64 bbin = bbp;
 	#pragma unroll
 	for (int i = 0; i < maskMaxBits - 1; i++) {
-		U64 bb = mask & -mask;
-		mask ^= bb;
-		bbp = ((bbp & (bb - 1)) << 1) | (bbp & ~(bb - 1));
+		bbp += bbp & (mask ^ (mask - 1));
+		mask &= mask - 1;
 	}
-	{
-		U64 bb = mask;
-		bbp = ((bbp & (bb - 1)) >> (maskMaxBits - 1)) | (bbp & ~(bb - 1) >> maskMaxBits);
-	}
+	bbp += bbp & (mask - 1);
+	bbp >>= maskMaxBits;
 	assert(bbp == _pext_u64(bbin, ~mask));
 	return bbp;
 #endif
@@ -280,16 +281,13 @@ U64 INLINE_INDEX_FN indexToBoard_decompactPawnBitboard(U64 bbp, U64 mask) {
 	return _pdep_u64(bbp, ~mask);
 #else
 	U64 bbin = bbp;
-	#pragma unroll 
+	#pragma unroll
 	for (int i = 0; i < maskMaxBits - 1; i++) {
 		U64 bb = mask & -mask;
-		mask ^= bb;
-		bbp = (bbp & (bb - 1)) | ((bbp & ~(bb - 1)) << 1);
+		bbp += bbp & ~(bb - 1);
+		mask &= mask - 1;
 	}
-	{
-		U64 bb = mask;
-		bbp = (bbp & (bb - 1)) | ((bbp & ~(bb - 1)) << 1);
-	}
+	bbp += bbp & ~(mask - 1);
 	assert(bbp == _pdep_u64(bbin, ~mask));
 	return bbp;
 #endif
