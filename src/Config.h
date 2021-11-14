@@ -4,4 +4,4 @@
 
 #define COUNT_BOARDS
 
-// #define USE_PDEP
+#define USE_PDEP
