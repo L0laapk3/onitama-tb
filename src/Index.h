@@ -430,33 +430,8 @@ Board INLINE_INDEX_FN indexToBoard(U64 index) {
 	U64 bbk0, bbk1;
 	std::tie(bbk0, bbk1) = TABLES_BBKINGS[invert][bbStuff.ik];
 
-#ifdef USE_PDEP
-	U64 bbp0 = _pdep_u64(bbStuff.bbpc0, ~bbk0 & ~bbk1) | bbk0; // P0 pawns skip over kings
-	U64 bbp1 = _pdep_u64(bbStuff.bbpc1, ~bbk1 & ~bbp0) | bbk1; // P1 pawns skip over kings and P0 pawns
-#else
-    U64 bbp0 = bbStuff.bbpc0;
-	// U64 bbks = bbk0 | bbk1;
-	// U64 bbkmin = (bbks & -bbks) - 1;
-	// U64 bbkmax = (bbks & bbks - 1) - 1;
-	U64 bbkmin = std::min(bbk0, bbk1), bbkmax = std::max(bbk0, bbk1);
-    bbp0 = (bbp0 & (bbkmin - 1)) | ((bbp0 & ~(bbkmin - 1)) << 1);
-    bbp0 = (bbp0 & (bbkmax - 1)) | ((bbp0 & ~(bbkmax - 1)) << 1);
-	bbp0 |= bbk0;
-
-	U64 bbp1 = bbStuff.bbpc1;
-	U64 bbmask = bbp0 | bbk1;
-	#pragma unroll 
-	for (int i = 0; i < TB_MEN / 2; i++) {
-		U64 bb = bbmask & -bbmask;
-		bbmask ^= bb;
-		bbp1 = (bbp1 & (bb - 1)) | ((bbp1 & ~(bb - 1)) << 1);
-	}
-	{
-		U64 bb = bbmask;
-		bbp1 = (bbp1 & (bb - 1)) | ((bbp1 & ~(bb - 1)) << 1);
-	}
-	bbp1 |= bbk1;
-#endif
+	U64 bbp0 = indexToBoard_decompactPawnBitboard<2>(bbStuff.bbpc0, bbk0 | bbk1) | bbk0; // P0 pawns skip over kings
+	U64 bbp1 = indexToBoard_decompactPawnBitboard<TB_MEN/2 + 1>(bbStuff.bbpc1, bbk1 | bbp0) | bbk1; // P1 pawns skip over kings and P0 pawns
 	
 	if (invert) {
 		std::swap(bbp0, bbp1);
