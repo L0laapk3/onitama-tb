@@ -22,7 +22,7 @@ void testOne(const CardsInfo& cards) {
 		for (U64 pieceCountI = 0; pieceCountI < PIECECOUNTMULT; pieceCountI++) {
 			auto& pc = OFFSET_ORDER[pieceCountI];
 			for (U64 kingI = 0; kingI < KINGSMULT; kingI++) {
-				bi.cardsPieceCntKingsIndex = (cardI * PIECECOUNTMULT + pieceCountI) * KINGSMULT + kingI;
+				bi.cardsPieceCntKingsIndex = pieceCountI * KINGSMULT + kingI;
 				U64 rowSize;
 
 				U64 bbk0, bbk1;
@@ -50,21 +50,21 @@ void testOne(const CardsInfo& cards) {
 				// std::cout << cardI << '\t' << pieceCountI << '\t' << kingI << " (" << _tzcnt_u64(bbk0) << ' ' << ik1 << ")\t" << p0Combinations << std::endl;
 
 				for (bi.pieceIndex = 0; bi.pieceIndex < rowSize; bi.pieceIndex++) {
-					Board board = indexToBoard<startInv>(bi, startMoveBoard, cardI);
+					Board board = indexToBoard<startInv>(bi, startMoveBoard);
 					if (board.isWinInOne<false>(reverseMoveBoard)) {
 						board.print();
 						std::cout << "index resolves to win in 1: (" << bi.cardsPieceCntKingsIndex << " " << bi.pieceIndex << ")" << std::endl;
-						indexToBoard<startInv>(bi, startMoveBoard, cardI);
+						indexToBoard<startInv>(bi, startMoveBoard);
 					}
 					if (startInv != endInv)
 						board = board.invert();
-					auto result = boardToIndex<endInv>(board, endMoveBoard, cardI);
+					auto result = boardToIndex<endInv>(board, endMoveBoard);
 					if (result.cardsPieceCntKingsIndex != bi.cardsPieceCntKingsIndex || result.pieceIndex != bi.pieceIndex) {
 						std::cout << "problem (" << bi.cardsPieceCntKingsIndex << " " << bi.pieceIndex << "), (" << result.cardsPieceCntKingsIndex << " " << result.pieceIndex << ")" << std::endl;
-						Board board2 = indexToBoard<startInv>(bi, startMoveBoard, cardI);
+						Board board2 = indexToBoard<startInv>(bi, startMoveBoard);
 						if (startInv != endInv)
 							board2 = board2.invert();
-						boardToIndex<endInv>(board2, endMoveBoard, cardI);
+						boardToIndex<endInv>(board2, endMoveBoard);
 					}
 				}
 			}

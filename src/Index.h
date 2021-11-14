@@ -255,10 +255,10 @@ constexpr auto MULTABLE2 = [](){
 
 template <int maskMaxBits>
 U64 INLINE_INDEX_FN boardToIndex_compactPawnBitboard(U64 bbp, U64 mask) {
-
 #ifdef USE_PDEP
 	return _pext_u64(bbp, ~mask);
 #else
+	U64 bbin = bbp;
 	#pragma unroll
 	for (int i = 0; i < maskMaxBits - 1; i++) {
 		U64 bb = mask & -mask;
@@ -267,9 +267,9 @@ U64 INLINE_INDEX_FN boardToIndex_compactPawnBitboard(U64 bbp, U64 mask) {
 	}
 	{
 		U64 bb = mask;
-		bbp = ((bbp & (bb - 1)) << 1) | (bbp & ~(bb - 1));
+		bbp = ((bbp & (bb - 1)) >> (maskMaxBits - 1)) | (bbp & ~(bb - 1) >> maskMaxBits);
 	}
-	bbp >>= TB_MEN / 2 + 1;
+	assert(bbp == _pext_u64(bbin, ~mask));
 	return bbp;
 #endif
 }
@@ -279,6 +279,7 @@ U64 INLINE_INDEX_FN indexToBoard_decompactPawnBitboard(U64 bbp, U64 mask) {
 #ifdef USE_PDEP
 	return _pdep_u64(bbp, ~mask);
 #else
+	U64 bbin = bbp;
 	#pragma unroll 
 	for (int i = 0; i < maskMaxBits - 1; i++) {
 		U64 bb = mask & -mask;
@@ -289,6 +290,7 @@ U64 INLINE_INDEX_FN indexToBoard_decompactPawnBitboard(U64 bbp, U64 mask) {
 		U64 bb = mask;
 		bbp = (bbp & (bb - 1)) | ((bbp & ~(bb - 1)) << 1);
 	}
+	assert(bbp == _pdep_u64(bbin, ~mask));
 	return bbp;
 #endif
 }
@@ -329,9 +331,8 @@ U32 INLINE_INDEX_FN boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
 }
 
 
-// note: cardI is from the perspective of the currently to play player. so if invert=true, then use CARDS_INVERT[cardI]
 template <bool invert>
-BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMoveBoard, U32 cardI) {
+BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMoveBoard) {
 	if (invert) {
 		std::swap(board.bbp[0], board.bbp[1]);
 		std::swap(board.bbk[0], board.bbk[1]);
@@ -367,7 +368,7 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	U32 offset = OFFSETS_SUB_EMPTY[pp0cnt][pp1cnt][templeWin];
 
 	return {
-		.cardsPieceCntKingsIndex = (cardI * PIECECOUNTMULT + rpc) * KINGSMULT + rk,
+		.cardsPieceCntKingsIndex = rpc * KINGSMULT + rk,
 		.pieceIndex = rp0 * PIECES1MULT[pp0cnt][pp1cnt] + rp1 - offset,
 	};
 }
@@ -379,13 +380,11 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 
 
 
-// note: cardI is from the perspective of the currently to play player. so if invert=true, then use CARDS_INVERT[cardI]
 template<bool invert>
-Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBoard, U32 cardI) {
+Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBoard) {
 
 	U32 rk = bi.cardsPieceCntKingsIndex % KINGSMULT;
-	bi.cardsPieceCntKingsIndex /= KINGSMULT;
-	U32 rpc = bi.cardsPieceCntKingsIndex - cardI * PIECECOUNTMULT;
+	U32 rpc = bi.cardsPieceCntKingsIndex / KINGSMULT;
 	
 	U64 bbk0, bbk1;
 	std::tie(bbk0, bbk1) = TABLES_BBKINGS[invert][rk];
