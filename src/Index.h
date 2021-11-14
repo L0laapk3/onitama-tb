@@ -18,7 +18,7 @@
 #include <bitset>
 
 
-// #define NO_INLINE_INDEX
+//  #define NO_INLINE_INDEX
 
 #ifdef NO_INLINE_INDEX
 	#define INLINE_INDEX_FN __attribute__((noinline))
@@ -231,51 +231,55 @@ constexpr auto MULTABLE2 = [](){
 
 template <bool invert>
 U64 INLINE_INDEX_FN boardToIndex_kings(Board board) {
-	if (invert)
-		std::swap(board.bbk[0], board.bbk[1]);
-
 	U64 ik0 = invert ? _lzcnt_u64(board.bbk[0]) - 39 : _tzcnt_u64(board.bbk[0]); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
 	U64 ik1 = invert ? _lzcnt_u64(board.bbk[1]) - 39 : _tzcnt_u64(board.bbk[1]);
 	return TABLE_TWOKINGS[ik0*32 + ik1];
 }
 
-
-
-
-template <bool invert, bool player>
-U64 INLINE_INDEX_FN boardToIndex_pawns_A(Board board) {
-	if (invert) {
-		std::swap(board.bbp[0], board.bbp[1]);
-		std::swap(board.bbk[0], board.bbk[1]);
-	}
-
-	U64 bbpp = board.bbp[player] - board.bbk[player];
+template <int maskMaxBits>
+U64 INLINE_INDEX_FN boardToIndex_compactPawnBitboard(U64 bbp, U64 mask) {
 #ifdef USE_PDEP
-	U64 bbpc = _pext_u64(bbpp, (player ? ~board.bbp[0] : ~board.bbk[0]) & ~board.bbk[1]); // P0 pawns skip over kings, P1 pawns skip over kings and P0 pawns
+	return _pext_u64(bbp, ~mask);
 #else
-	U64 bbpc = bbpp;
-	if (!player) {
-		U64 bbkmin = std::min(board.bbk[0], board.bbk[1]), bbkmax = std::max(board.bbk[0], board.bbk[1]);
-		bbpc = (bbpc & (bbkmin - 1)) | ((bbpc & ~(bbkmin - 1)) >> 1);
-		bbpc = (bbpc & (bbkmax - 1)) | ((bbpc & ~(bbkmax - 1)) >> 1);
-	} else {
-		U64 bbmask = board.bbp[0] | board.bbk[1];
-		#pragma unroll
-		for (int i = 0; i < TB_MEN / 2; i++) {
-			U64 bb = bbmask & -bbmask;
-			bbmask ^= bb;
-			bbpc = ((bbpc & (bb - 1)) << 1) | (bbpc & ~(bb - 1));
-		}
-		{
-			U64 bb = bbmask;
-			bbpc = ((bbpc & (bb - 1)) << 1) | (bbpc & ~(bb - 1));
-		}
-		bbpc >>= TB_MEN / 2 + 1;
+	U64 bbin = bbp;
+	#pragma unroll
+	for (int i = 0; i < maskMaxBits - 1; i++) {
+		U64 bb = mask & -mask;
+		mask ^= bb;
+		bbp += bbp & (bb - 1);
 	}
+	{
+		U64 bb = mask;
+		bbp += bbp & (bb - 1);
+	}
+	bbp >>= maskMaxBits;
+	assert(bbp == _pext_u64(bbin, ~mask));
+	return bbp;
 #endif
-
-	return bbpc;
 }
+
+template <int maskMaxBits>
+U64 INLINE_INDEX_FN indexToBoard_decompactPawnBitboard(U64 bbp, U64 mask) {
+#ifdef USE_PDEP
+	return _pdep_u64(bbp, ~mask);
+#else
+	U64 bbin = bbp;
+	#pragma unroll 
+	for (int i = 0; i < maskMaxBits - 1; i++) {
+		U64 bb = mask & -mask;
+		mask ^= bb;
+		bbp += bbp & ~(bb - 1);
+	}
+	{
+		U64 bb = mask;
+		bbp += bbp & ~(bb - 1);
+	}
+	assert(bbp == _pdep_u64(bbin, ~mask));
+	return bbp;
+#endif
+}
+
+
 
 template <bool invert>
 U64 INLINE_INDEX_FN boardToIndex_pawns_B(U64 bbpc, U64 shiftOffset) {
@@ -314,10 +318,16 @@ U64 INLINE_INDEX_FN boardToIndex_pawns_B(U64 bbpc, U64 shiftOffset) {
 template <bool invert>
 U64 INLINE_INDEX_FN boardToIndex(Board board) {
 	
+	if (invert) {
+		std::swap(board.bbp[0], board.bbp[1]);
+		std::swap(board.bbk[0], board.bbk[1]);
+	}
+	
 	U64 rk = boardToIndex_kings<invert>(board);
 
-	U64 bbpc1 = boardToIndex_pawns_A<invert, true>(board);
-	U64 bbpc0 = boardToIndex_pawns_A<invert, false>(board);
+
+	U64 bbpc1 = boardToIndex_compactPawnBitboard<TB_MEN/2 + 1>(board.bbp[1] ^ board.bbk[1], board.bbp[0] | board.bbk[1]);
+	U64 bbpc0 = boardToIndex_compactPawnBitboard<2>(board.bbp[0] ^ board.bbk[0], board.bbk[0] | board.bbk[1]);
 	
 	U64 pp1cnt = _popcnt64(bbpc1);
 	U64 pp0cnt = _popcnt64(bbpc0);
