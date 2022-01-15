@@ -21,7 +21,7 @@ void testOne(const CardsInfo& cards) {
 		const auto& endMoveBoard = endInv ? forwardOtherMoveBoard : reverseMoveBoard;
 		for (U64 pieceCountI = 0; pieceCountI < PIECECOUNTMULT; pieceCountI++) {
 			auto& pc = OFFSET_ORDER[pieceCountI];
-			for (U64 kingI = 0; kingI < KINGSMULT; kingI++) {
+			for (U64 kingI = 1; kingI < KINGSMULT; kingI++) {
 				bi.cardsPieceCntKingsIndex = pieceCountI * KINGSMULT + kingI;
 				U64 rowSize;
 

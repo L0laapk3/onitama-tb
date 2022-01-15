@@ -18,13 +18,9 @@
 #include <bitset>
 
 
-<<<<<<< HEAD
 #define NO_INLINE_INDEX
-=======
-//  #define NO_INLINE_INDEX
->>>>>>> master
 
-#ifdef NO_INLINE_INDEX
+#if defined(NO_INLINE_INDEX) && !defined(NDEBUG)
 	#define INLINE_INDEX_FN __attribute__((noinline))
 #else
 	#define INLINE_INDEX_FN __attribute__((always_inline)) inline 
@@ -399,10 +395,10 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 	U64 ip1 = bi.pieceIndex % PIECES1MULT[p0c][p1c];
 	U64 ip0 = bi.pieceIndex / PIECES1MULT[p0c][p1c];
 
-	U64 bbpc0 = *(PAWNTABLE_POINTERS[invert][p0c - templeWin] + ip0);
+	U64 bbpc0 = PAWNTABLE_POINTERS[invert][p0c - templeWin][ip0];
 	if (invert)
 		bbpc0 >>= _popcnt64(p0CompactMask) - 2;
-	U64 bbpc1 = *(PAWNTABLE_POINTERS[invert][p1c] + ip1);
+	U64 bbpc1 = PAWNTABLE_POINTERS[invert][p1c][ip1];
 	if (invert)
 		bbpc1 >>= p0c;
 
