@@ -31,9 +31,13 @@ void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& 
 template<int depth>
 void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
 
-TableBase generateTB(const CardsInfo& cards) {
-	TableBase tb;
+template <bool print>
+TBGen generateTB(const CardsInfo& cards) {
+	TBGen result {
+		.tb = std::make_unique<TableBase>(),
+	};
 	U64 cnt_0 = 0;
+	TableBase& tb = *result.tb;
 	for (auto& row : tb) {
 		row = TableBaseRow((TB_ROW_SIZE + 31) / 32);
 		row.back() = (1ULL << 32) - (1ULL << (((TB_ROW_SIZE + 31) % 32) + 1)); // mark final rows as resolved so we dont have to worry about it
@@ -64,34 +68,48 @@ TableBase generateTB(const CardsInfo& cards) {
 		for (auto& thread : threads)
 			thread.join();
 
-		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
-		totalTime += time;
-		U64 cnt = cnt_0;
-#ifdef COUNT_BOARDS
-		for (auto& row : tb)
-			for (auto& val : row)
-				cnt += _popcnt32(val);
-		cnt -= totalBoards;
-		totalBoards += cnt;
-#endif
+		U64 cnt;
+		float time;
+		if (print) {
+			time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
+			totalTime += time;
+			cnt = cnt_0;
+	#ifdef COUNT_BOARDS
+			for (auto& row : tb)
+				for (auto& val : row)
+					cnt += _popcnt32(val);
+			cnt -= totalBoards;
+			totalBoards += cnt;
+	#endif
+		}
 		if (!modified)
 			break;
-#ifdef COUNT_BOARDS
-			printf("iter %3llu: %11llu boards in %.3fs\n", depth, cnt, time);
-#else
-			printf("iter %3llu in %.3fs\n", depth, time);
-#endif
+		if (print) {
+	#ifdef COUNT_BOARDS
+				printf("iter %3llu: %11llu boards in %.3fs\n", depth, cnt, time);
+	#else
+				printf("iter %3llu in %.3fs\n", depth, time);
+	#endif
+		}
 		depth++;
 	}
-	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
+	auto elapsed = std::chrono::steady_clock::now() - beginLoopTime;
+	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count()) / 1000000;
 	U64 cnt = cnt_0;
 	for (auto& row : tb)
 		for (auto& val : row)
 			cnt += _popcnt32(val);
-	printf("found %llu boards in %.3fs/%.3fs\n", cnt, totalTime, totalInclusiveTime);
+	if (print) {
+		printf("found %llu boards in %.3fs/%.3fs\n", cnt, totalTime, totalInclusiveTime);
+	}
 
-	return tb;
+	result.cnt = cnt;
+	result.time = elapsed;
+	return result;
 }
+
+template TBGen generateTB<true>(const CardsInfo& cards);
+template TBGen generateTB<false>(const CardsInfo& cards);
 
 
 
@@ -420,4 +438,29 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 	}
 	if (mod)
 		modified = true;
+}
+
+
+
+
+void benchTB(U64 runs) {
+	constexpr CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB };
+	U64 correntCnt = 1075191344ULL;
+
+	auto res = generateTB<true>(CARDS);
+   if (correntCnt != res.cnt) {
+		std::cout << "error" << std::endl;
+		return;
+	}
+	auto totalTime = std::chrono::duration<long long, std::nano>::zero();
+	for (U64 i = 0; i < runs; i++) {
+		auto res = generateTB<false>(CARDS);
+		if (correntCnt != res.cnt) {
+			std::cout << "error" << std::endl;
+			return;
+		}
+		totalTime += res.time;
+		float averageTimeSec = (U64)std::chrono::duration_cast<std::chrono::microseconds>(totalTime).count() / 1000000.f / (i + 1);
+		printf("iter %3llu: avg. %.3fs\n", (i + 1), averageTimeSec);
+	}
 }

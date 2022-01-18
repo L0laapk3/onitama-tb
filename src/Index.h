@@ -20,7 +20,7 @@
 
 //  #define NO_INLINE_INDEX
 
-#ifdef NO_INLINE_INDEX
+#if defined(NO_INLINE_INDEX) && !defined(NDEBUG)
 	#define INLINE_INDEX_FN __attribute__((noinline))
 #else
 	#define INLINE_INDEX_FN __attribute__((always_inline)) inline 
@@ -31,7 +31,7 @@
 constexpr U64 KINGSMULT = 24 + 23*23;
 
 constexpr auto PIECES1MULT = [](){
-	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a{};
+	std::array<std::array<U32, TB_MEN/2>, TB_MEN/2> a{};
 	for (int p0 = 0; p0 < TB_MEN/2; p0++)
 		for (int p1 = 0; p1 < TB_MEN/2; p1++)
 			a[p0][p1] = fact(23-p0, 23-p0-p1) / fact(p1);
@@ -39,14 +39,14 @@ constexpr auto PIECES1MULT = [](){
 }();
 #define PIECES0MULT PIECES1MULT[0]
 constexpr auto PIECES10MULT = [](){
-	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a{};
+	std::array<std::array<U32, TB_MEN/2>, TB_MEN/2> a{};
 	for (int p0 = 0; p0 < TB_MEN/2; p0++)
 		for (int p1 = 0; p1 < TB_MEN/2; p1++)
 			a[p0][p1] = PIECES0MULT[p0] * PIECES1MULT[p0][p1];
 	return a;
 }();
 constexpr auto PIECES10KMULT = [](){
-	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a{};
+	std::array<std::array<U32, TB_MEN/2>, TB_MEN/2> a{};
 	for (int p0 = 0; p0 < TB_MEN/2; p0++)
 		for (int p1 = 0; p1 < TB_MEN/2; p1++)
 			a[p0][p1] = KINGSMULT * PIECES0MULT[p0] * PIECES1MULT[p0][p1];

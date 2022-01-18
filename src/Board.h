@@ -15,22 +15,22 @@ public:
 	std::array<U64, 2> bbp;
 	std::array<U64, 2> bbk;
 
-	template <U64 player>
+	template <bool player>
 	U64 inline isKingAttacked(U64 bbk, const MoveBoard& reverseMoveBoard);
-	template <U64 player>
+	template <bool player>
 	bool inline isTempleKingInRange(const MoveBoard& reverseMoveBoard);
-	template <U64 player>
+	template <bool player>
 	bool inline isTempleFree();
 
-	template <U64 player>
+	template <bool player>
 	bool inline isTempleWinInOne(const MoveBoard& reverseMoveBoard);
-	template <U64 player>
+	template <bool player>
 	U64 inline isTakeWinInOne(const MoveBoard& reverseMoveBoard);
-	template <U64 player>
+	template <bool player>
 	bool inline isWinInOne(const MoveBoard& reverseMoveBoard);
-	template <U64 player>
+	template <bool player>
 	bool inline isWinInTwo(const MoveBoard& reversePMoveBoard, const MoveBoard& reverseOtherPMoveBoard);
-	template <U64 player>
+	template <bool player>
 	bool inline isWinInThree(const MoveBoard& reverseMoveBoard, const MoveBoard& reverseMoveBoardcard0, const MoveBoard& reverseMoveBoardcard1, const MoveBoard& forwardOtherPMoveBoard, const MoveBoard& reverseOtherPMoveBoard);
 
 	// debug utils
@@ -39,21 +39,21 @@ public:
 };
 
 
-template <U64 player>
+template <bool player>
 bool inline Board::isTempleKingInRange(const MoveBoard& reverseMoveBoard) {
 	// player king can move to temple
 	return reverseMoveBoard[PTEMPLE[player]] & bbk[player];
 }
 
 
-template <U64 player>
+template <bool player>
 bool inline Board::isTempleFree() {
 	// no player piece is blocking the temple.
 	return !(bbp[player] & (1 << PTEMPLE[player]));
 }
 
 
-template <U64 player>
+template <bool player>
 bool inline Board::isTempleWinInOne(const MoveBoard& reverseMoveBoard) {
 	return isTempleKingInRange<player>(reverseMoveBoard) && isTempleFree<player>();
 }
@@ -61,7 +61,7 @@ bool inline Board::isTempleWinInOne(const MoveBoard& reverseMoveBoard) {
 
 // is !player king safe?
 // is player attacking !players king?
-template <U64 player>
+template <bool player>
 U64 inline Board::isKingAttacked(U64 bbk, const MoveBoard& reverseMoveBoard) {
 	U64 pk = _tzcnt_u64(bbk);
 	return reverseMoveBoard[pk] & bbp[player];
@@ -69,12 +69,12 @@ U64 inline Board::isKingAttacked(U64 bbk, const MoveBoard& reverseMoveBoard) {
 
 
 
-template <U64 player>
+template <bool player>
 U64 inline Board::isTakeWinInOne(const MoveBoard& reverseMoveBoard) {
 	return isKingAttacked<player>(bbk[!player], reverseMoveBoard);
 }
 
-template <U64 player>
+template <bool player>
 bool inline Board::isWinInOne(const MoveBoard& reverseMoveBoard) {
 	if (isTempleWinInOne<player>(reverseMoveBoard))
 		return true;
@@ -82,7 +82,7 @@ bool inline Board::isWinInOne(const MoveBoard& reverseMoveBoard) {
 }
 
 
-template <U64 player>
+template <bool player>
 bool inline Board::isWinInTwo(const MoveBoard& reversePMoveBoard, const MoveBoard& reverseOtherPMoveBoard) {
 	// it is the assumption that 2 is the first possible game-ending ply
 	// !player cannot prevent player from winning
@@ -116,7 +116,7 @@ bool inline Board::isWinInTwo(const MoveBoard& reversePMoveBoard, const MoveBoar
 
 
 // optimisation idea: fast check if its even possible at all using precomputed tables
-template <U64 player>
+template <bool player>
 bool inline Board::isWinInThree(const MoveBoard& reverseMoveBoard, const MoveBoard& reverseMoveBoardcard0, const MoveBoard& reverseMoveBoardcard1, const MoveBoard& forwardOtherPMoveBoard, const MoveBoard& reverseOtherPMoveBoard) {
 	// any player move for !player cannot prevent player from winning
 	// it is the assumption that 3 is the first possible game-ending ply
