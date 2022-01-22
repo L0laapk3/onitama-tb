@@ -28,7 +28,7 @@
 
 
 struct BoardIndex {
-	U32 cardsPieceCntKingsIndex;
+	U32 pieceCnt_KingsIndex;
 	U32 pieceIndex;
 };
 
@@ -365,7 +365,7 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	U32 offset = OFFSETS_SUB_EMPTY[pp0cnt][pp1cnt][templeWin];
 
 	return {
-		.cardsPieceCntKingsIndex = rpc * KINGSMULT + rk,
+		.pieceCnt_KingsIndex = rpc * KINGSMULT + rk,
 		.pieceIndex = rp0 * PIECES1MULT[pp0cnt][pp1cnt] + rp1 - offset,
 	};
 }
@@ -379,8 +379,8 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 template<bool invert>
 Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBoard) {
 
-	U32 rk = bi.cardsPieceCntKingsIndex % KINGSMULT;
-	U32 rpc = bi.cardsPieceCntKingsIndex / KINGSMULT;
+	U32 rk = bi.pieceCnt_KingsIndex % KINGSMULT;
+	U32 rpc = bi.pieceCnt_KingsIndex / KINGSMULT;
 	
 	U64 bbk0, bbk1;
 	std::tie(bbk0, bbk1) = TABLES_BBKINGS[invert][rk];
@@ -403,13 +403,19 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 	U64 ip0 = bi.pieceIndex / PIECES1MULT[p0c][p1c];
 
 	U64 bbpc0 = PAWNTABLE_POINTERS[invert][p0c - templeWin][ip0];
-	if (invert)
+	assert(_popcnt64(bbpc0) == p0c);
+	if (invert) {
+		assert((bbpc0 & ((1ULL << (_popcnt64(p0CompactMask) - 2)) - 1)) == 0);
 		bbpc0 >>= _popcnt64(p0CompactMask) - 2;
+	}
 	U64 bbpc1 = PAWNTABLE_POINTERS[invert][p1c][ip1];
-	if (invert)
+	assert(_popcnt64(bbpc1) == p1c);
+	if (invert) {
+		assert((bbpc1 & ((1ULL << (p0c)) - 1)) == 0);
 		bbpc1 >>= p0c;
+	}
 
-	U64 bbp0 = indexToBoard_decompactPawnBitboard<7>(bbpc0, p0CompactMask) | bbk0; // P0 pawns skip over kings
+	U64 bbp0 = indexToBoard_decompactPawnBitboard<11>(bbpc0, p0CompactMask) | bbk0; // P0 pawns skip over kings
 
 	if (templeWin) // add the temple pawn in to block the temple win
 		bbp0 |= 1ULL << PTEMPLE[invert];
@@ -418,8 +424,8 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 
 	assert(bbp0 < (1 << 25));
 	assert(bbp1 < (1 << 25));
-	assert(_popcnt64(bbp0) == p0c + 1);
-	assert(_popcnt64(bbp1) == p1c + 1);
+	// assert(_popcnt64(bbp0) == p0c + 1);
+	// assert(_popcnt64(bbp1) == p1c + 1);
 	
 	if (invert) {
 		std::swap(bbp0, bbp1);
