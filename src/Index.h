@@ -16,6 +16,7 @@
 #include <bitset>
 #include <algorithm>
 #include <bitset>
+#include <functional>
 
 
 //#define NO_INLINE_INDEX
@@ -27,8 +28,12 @@
 #endif
 
 
+
+void iterateTBCounts(const MoveBoard& reverseMoveBoard, std::function<void(U32, U32)> cb);
+
+
 struct BoardIndex {
-	U32 pieceCnt_KingsIndex;
+	U32 pieceCnt_kingsIndex;
 	U32 pieceIndex;
 };
 
@@ -365,7 +370,7 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	U32 offset = OFFSETS_SUB_EMPTY[pp0cnt][pp1cnt][templeWin];
 
 	return {
-		.pieceCnt_KingsIndex = rpc * KINGSMULT + rk,
+		.pieceCnt_kingsIndex = rpc * KINGSMULT + rk,
 		.pieceIndex = rp0 * PIECES1MULT[pp0cnt][pp1cnt] + rp1 - offset,
 	};
 }
@@ -379,8 +384,8 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 template<bool invert>
 Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBoard) {
 
-	U32 rk = bi.pieceCnt_KingsIndex % KINGSMULT;
-	U32 rpc = bi.pieceCnt_KingsIndex / KINGSMULT;
+	U32 rk = bi.pieceCnt_kingsIndex % KINGSMULT;
+	U32 rpc = bi.pieceCnt_kingsIndex / KINGSMULT;
 	
 	U64 bbk0, bbk1;
 	std::tie(bbk0, bbk1) = TABLES_BBKINGS[invert][rk];
