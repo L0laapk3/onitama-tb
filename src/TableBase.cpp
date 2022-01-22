@@ -23,11 +23,11 @@
 template<int depth>
 void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
 
-TableBase* generateTB(const CardsInfo& cards) {
+std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
+	auto tb = std::make_unique<TableBase>();
 
-	TableBase* tb = new TableBase;
-	U64 totalRows = 0, totalSize = 0;
+	U64 cnt_0 = 0, totalRows = 0, totalSize = 0;
 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
 		auto& cardTb = (*tb)[cardI];
 		auto permutation = CARDS_PERMUTATIONS[cardI];
@@ -53,7 +53,7 @@ TableBase* generateTB(const CardsInfo& cards) {
 			auto& row = cardTb[pieceCnt_kingsIndex];
 			row = tbMemPtrIncr;
 			row[rowEntries - 1] = (1ULL << 32) - (1ULL << (((rowSize + 31) % 32) + 1)); // mark final rows as resolved so we dont have to worry about it
-			tb->cnt_0 -= _popcnt32(row[rowEntries - 1]);
+			cnt_0 -= _popcnt32(row[rowEntries - 1]);
 			tbMemPtrIncr += rowEntries;
 		});
 	}
@@ -85,7 +85,7 @@ TableBase* generateTB(const CardsInfo& cards) {
 
 		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
 		totalTime += time;
-		U64 cnt = tb->cnt_0;
+		U64 cnt = cnt_0;
 #ifdef COUNT_BOARDS
 		for (auto& entry : tb->mem)
 			cnt += _popcnt32(entry);
@@ -102,7 +102,7 @@ TableBase* generateTB(const CardsInfo& cards) {
 		depth++;
 	}
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
-	U64 cnt = tb->cnt_0;
+	U64 cnt = cnt_0;
 	for (auto& entry : tb->mem)
 		cnt += _popcnt32(entry);
 	printf("found %llu boards in %.3fs/%.3fs\n", cnt, totalTime, totalInclusiveTime);

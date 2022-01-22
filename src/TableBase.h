@@ -18,8 +18,6 @@ struct TableBase {
 	#pragma pack(pop)
 
 	std::vector<std::atomic<U64>> mem;
-
-	U64 cnt_0 = 0;
 	
     Row& operator [](int i) {
         return tb[i];
@@ -29,4 +27,4 @@ struct TableBase {
     }
 };
 
-TableBase* generateTB(const CardsInfo& cards);
+std::unique_ptr<TableBase> generateTB(const CardsInfo& cards);
