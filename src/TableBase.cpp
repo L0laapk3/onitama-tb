@@ -173,24 +173,24 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 		// check if all P1 moves lead to a victory
 		U64 cardI = 30 * currChunk / NUM_CHUNKS;
 
-		U64 invCardI = CARDS_INVERT[cardI];
-		auto& row = tb[invCardI];
+		auto& row = tb[cardI];
 		auto permutation = CARDS_PERMUTATIONS[cardI];
 		// forward moves for p1 so reverse moveboards
-		const MoveBoard& moveBoard1 = cards.moveBoardsReverse[permutation.playerCards[1][1]];
-		const MoveBoard& moveBoard0 = depth > 2 ? cards.moveBoardsReverse[permutation.playerCards[1][0]] : combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[1][0]], moveBoard1);
-		TableBaseRow& targetRow0 = tb[CARDS_SWAP[cardI][1][0]];
-		TableBaseRow& targetRow1 = tb[CARDS_SWAP[cardI][1][1]];
-		const MoveBoard combinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
+		const MoveBoard& moveBoard1 = cards.moveBoardsReverse[permutation.playerCards[0][1]];
+		const MoveBoard& moveBoard0 = depth > 2 ? cards.moveBoardsReverse[permutation.playerCards[0][0]] : combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], moveBoard1);
+		U64 invCardI = CARDS_INVERT[cardI];
+		TableBaseRow& targetRow0 = tb[CARDS_SWAP[invCardI][1][0]];
+		TableBaseRow& targetRow1 = tb[CARDS_SWAP[invCardI][1][1]];
+		const MoveBoard combinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[1][0]], cards.moveBoardsReverse[permutation.playerCards[1][1]]);
 		const MoveBoard combinedOtherMoveBoardFlip = combineMoveBoards(moveBoard0, moveBoard1);
 		
-		const MoveBoard combinedMoveBoardsFlipUnmove0 = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
-		const MoveBoard combinedMoveBoardsFlipUnmove1 = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][0]]);
+		const MoveBoard combinedMoveBoardsFlipUnmove0 = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[1][1]]);
+		const MoveBoard combinedMoveBoardsFlipUnmove1 = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[1][0]]);
 
 		// moveboard for reversing p0
 		const MoveBoard& p0ReverseMoveBoard = cards.moveBoardsReverse[permutation.sideCard];
-		TableBaseRow& p0ReverseTargetRow0 = tb[CARDS_SWAP[cardI][0][0]];
-		TableBaseRow& p0ReverseTargetRow1 = tb[CARDS_SWAP[cardI][0][1]];
+		TableBaseRow& p0ReverseTargetRow0 = tb[CARDS_SWAP[invCardI][0][0]];
+		TableBaseRow& p0ReverseTargetRow1 = tb[CARDS_SWAP[invCardI][0][1]];
 
 		for (U64 tbIndex = row.size() * (currChunk % NUM_CHUNKS_PER_CARD) / NUM_CHUNKS_PER_CARD; tbIndex < row.size() * ((currChunk % NUM_CHUNKS_PER_CARD) + 1) / NUM_CHUNKS_PER_CARD; tbIndex++) {
 			auto& entry = row[tbIndex];
