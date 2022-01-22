@@ -362,7 +362,7 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 		board.bbp[0] ^= (1 << PTEMPLE[invert]);
 		p0CompactMask |= (1 << PTEMPLE[invert]);
 	}
-	U64 bbpc0 = boardToIndex_compactPawnBitboard<7>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces
+	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces
 
 	U32 rp1 = boardToIndex_pawnBitboardToIndex<invert>(bbpc1, 9 + pp0cnt); // possible positions: 23 - pp0cnt
 	U32 rp0 = boardToIndex_pawnBitboardToIndex<invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // possible positions: 25 - popcnt(mask)
@@ -445,3 +445,4 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 
 
 void testIndexing(const CardsInfo& cards);
+void exhaustiveIndexTest(const CardsInfo& cards);
