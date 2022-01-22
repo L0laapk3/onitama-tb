@@ -27,7 +27,6 @@ TableBase* generateTB(const CardsInfo& cards) {
 
 
 	TableBase* tb = new TableBase;
-	U64 cnt_0 = 0;
 	U64 totalRows = 0, totalSize = 0;
 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
 		auto& cardTb = (*tb)[cardI];
@@ -39,8 +38,8 @@ TableBase* generateTB(const CardsInfo& cards) {
 			totalSize += rowSize;
 		});
 	}
-	std::atomic<U64>* tbMem = new std::atomic<U64>[totalRows];
-	std::atomic<U64>* tbMemPtr = tbMem;
+	tb->mem = std::vector<std::atomic<U64>>(totalRows);
+	std::atomic<U64>* tbMemPtrIncr = tb->mem.data();
 	std::cout << "Main TB size: " << totalSize << " entries (" << totalRows / 256 / 1024 << "MB)" << std::endl;
 
 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
@@ -52,13 +51,13 @@ TableBase* generateTB(const CardsInfo& cards) {
 		iterateTBCounts(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
 			U64 rowEntries = (rowSize + 31) / 32;
 			auto& row = cardTb[pieceCnt_kingsIndex];
-			row = tbMemPtr;
+			row = tbMemPtrIncr;
 			row[rowEntries - 1] = (1ULL << 32) - (1ULL << (((rowSize + 31) % 32) + 1)); // mark final rows as resolved so we dont have to worry about it
-			cnt_0 -= _popcnt32(row[rowEntries - 1]);
-			tbMemPtr += rowEntries;
+			tb->cnt_0 -= _popcnt32(row[rowEntries - 1]);
+			tbMemPtrIncr += rowEntries;
 		});
 	}
-	tb->end = tbMemPtr;
+	tb->end = tbMemPtrIncr;
 
 	U64 numThreads = std::clamp<U64>(std::thread::hardware_concurrency(), 1, 1024);
 	std::vector<std::thread> threads(numThreads);
@@ -86,10 +85,10 @@ TableBase* generateTB(const CardsInfo& cards) {
 
 		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
 		totalTime += time;
-		U64 cnt = cnt_0;
+		U64 cnt = tb->cnt_0;
 #ifdef COUNT_BOARDS
-		for (U64 i = 0; i < totalRows; i++)
-			cnt += _popcnt32(tbMem[i]);
+		for (auto& entry : tb->mem)
+			cnt += _popcnt32(entry);
 		cnt -= totalBoards;
 		totalBoards += cnt;
 #endif
@@ -103,9 +102,9 @@ TableBase* generateTB(const CardsInfo& cards) {
 		depth++;
 	}
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
-	U64 cnt = cnt_0;
-	for (U64 i = 0; i < totalRows; i++)
-		cnt += _popcnt32(tbMem[i]);
+	U64 cnt = tb->cnt_0;
+	for (auto& entry : tb->mem)
+		cnt += _popcnt32(entry);
 	printf("found %llu boards in %.3fs/%.3fs\n", cnt, totalTime, totalInclusiveTime);
 
 	return tb;
