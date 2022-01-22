@@ -26,6 +26,8 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
 	auto tb = std::make_unique<TableBase>();
+	
+	std::cout << "reference TB size: " << PIECECOUNTMULT * KINGSMULT * CARDSMULT << " entries (" << PIECECOUNTMULT * KINGSMULT * CARDSMULT / 128 << "KB)" << std::endl;
 
 	U64 cnt_0 = 0, totalRows = 0, totalSize = 0;
 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
@@ -38,9 +40,16 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 			totalSize += rowSize;
 		});
 	}
-	tb->mem = std::vector<std::atomic<U64>>(totalRows);
-	std::atomic<U64>* tbMemPtrIncr = tb->mem.data();
+	
 	std::cout << "Main TB size: " << totalSize << " entries (" << totalRows / 256 / 1024 << "MB)" << std::endl;
+	
+	try {
+		tb->mem = std::vector<std::atomic<U64>>(totalRows);
+	} catch (const std::bad_alloc& e) {
+		std::cout << e.what() << " (not enough memory?)" << std::endl;
+		throw e;
+	}
+	std::atomic<U64>* tbMemPtrIncr = tb->mem.data();
 
 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
 		auto& cardTb = (*tb)[cardI];
