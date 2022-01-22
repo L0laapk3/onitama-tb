@@ -51,9 +51,10 @@ void testOne(const CardsInfo& cards) {
 
 				for (bi.pieceIndex = 0; bi.pieceIndex < rowSize; bi.pieceIndex++) {
 					Board board = indexToBoard<startInv>(bi, startMoveBoard);
-					if (board.isWinInOne<false>(reverseMoveBoard)) {
+					if (board.isWinInOne<startInv>(startMoveBoard)) {
 						board.print();
 						std::cout << "index resolves to win in 1: (" << bi.cardsPieceCntKingsIndex << " " << bi.pieceIndex << ")" << std::endl;
+						board.isWinInOne<startInv>(startMoveBoard);
 						indexToBoard<startInv>(bi, startMoveBoard);
 					}
 					if (startInv != endInv)

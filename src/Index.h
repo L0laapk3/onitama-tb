@@ -374,11 +374,8 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 
 
 
-
-
-
 // indexToBoard<false>(index): given a unique index, returns the board with player 0 to move
-// indexToBoard<true>(index): same but for player 1. Identical to indexToBoard<false>(index).invert()
+// indexToBoard<true>(index): same but returns a board with player 1 to move. Identical to indexToBoard<false>(index).invert()
 template<bool invert>
 Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBoard) {
 
