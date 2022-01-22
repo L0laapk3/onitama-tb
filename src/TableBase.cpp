@@ -57,8 +57,8 @@ TableBase* generateTB(const CardsInfo& cards) {
 			cnt_0 -= _popcnt32(row[rowEntries - 1]);
 			tbMemPtr += rowEntries;
 		});
-		cardTb[PIECECOUNTMULT * KINGSMULT] = tbMemPtr;
 	}
+	tb->end = tbMemPtr;
 
 	U64 numThreads = std::clamp<U64>(std::thread::hardware_concurrency(), 1, 1024);
 	std::vector<std::thread> threads(numThreads);
