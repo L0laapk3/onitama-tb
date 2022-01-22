@@ -28,7 +28,7 @@ TableBase* generateTB(const CardsInfo& cards) {
 
 	TableBase* tb = new TableBase;
 	U64 cnt_0 = 0;
-	U64 totalSize = 0;
+	U64 totalRows = 0, totalSize = 0;
 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
 		auto& cardTb = (*tb)[cardI];
 		auto permutation = CARDS_PERMUTATIONS[cardI];
@@ -63,13 +63,14 @@ TableBase* generateTB(const CardsInfo& cards) {
 				}
 
 				// std::cout << cardI << '\t' << pc.first << ' ' << pc.second << '\t' << kingI << '\t' << rowSize << std::endl;
-				totalSize += (rowSize + 31) / 32;
+				totalRows += (rowSize + 31) / 32;
+				totalSize += rowSize;
 			}
 		}
 	}
-	std::atomic<U64>* tbMem = new std::atomic<U64>[totalSize];
+	std::atomic<U64>* tbMem = new std::atomic<U64>[totalRows];
 	std::atomic<U64>* tbMemPtr = tbMem;
-	std::cout << "Main TB size: " << totalSize / 256 / 1024 << "MB" << std::endl;
+	std::cout << "Main TB size: " << totalSize << " entries (" << totalRows / 256 / 1024 << "MB)" << std::endl;
 
 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
 		auto& cardTb = (*tb)[cardI];
@@ -155,7 +156,7 @@ TableBase* generateTB(const CardsInfo& cards) {
 		totalTime += time;
 		U64 cnt = cnt_0;
 #ifdef COUNT_BOARDS
-		for (U64 i = 0; i < totalSize; i++)
+		for (U64 i = 0; i < totalRows; i++)
 			cnt += _popcnt32(tbMem[i]);
 		cnt -= totalBoards;
 		totalBoards += cnt;
@@ -171,7 +172,7 @@ TableBase* generateTB(const CardsInfo& cards) {
 	}
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
 	U64 cnt = cnt_0;
-	for (U64 i = 0; i < totalSize; i++)
+	for (U64 i = 0; i < totalRows; i++)
 		cnt += _popcnt32(tbMem[i]);
 	printf("found %llu boards in %.3fs/%.3fs\n", cnt, totalTime, totalInclusiveTime);
 
