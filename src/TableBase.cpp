@@ -63,12 +63,13 @@ TableBase* generateTB(const CardsInfo& cards) {
 				}
 
 				// std::cout << cardI << '\t' << pc.first << ' ' << pc.second << '\t' << kingI << '\t' << rowSize << std::endl;
-				totalSize += rowSize;
+				totalSize += (rowSize + 31) / 32;
 			}
 		}
 	}
 	std::atomic<U64>* tbMem = new std::atomic<U64>[totalSize];
 	std::atomic<U64>* tbMemPtr = tbMem;
+	std::cout << "Main TB size: " << totalSize / 256 / 1024 << "MB" << std::endl;
 
 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
 		auto& cardTb = (*tb)[cardI];
@@ -125,9 +126,8 @@ TableBase* generateTB(const CardsInfo& cards) {
 		}
 		cardTb[PIECECOUNTMULT * KINGSMULT] = tbMemPtr;
 	}
-	std::cout << "Total size: " << totalSize << std::endl;
 
-	const U64 numThreads = std::clamp<U64>(std::thread::hardware_concurrency(), 1, 1);
+	U64 numThreads = std::clamp<U64>(std::thread::hardware_concurrency(), 1, 1024);
 	std::vector<std::thread> threads(numThreads);
 
 	U64 depth = 2;
@@ -149,6 +149,7 @@ TableBase* generateTB(const CardsInfo& cards) {
 			threads[i] = std::thread(targetFn, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified));
 		for (auto& thread : threads)
 			thread.join();
+		//numThreads = 1;
 
 		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
 		totalTime += time;
@@ -261,6 +262,9 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 									.bbk = { board.bbk[0], board.bbk[1] },
 								};
 
+								if (targetBoard.isWinInOne<false>(combinedMoveBoardFlip)) {
+									continue;
+								}
 								auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardFlip);
 								// the resulting board has p0 to move and needs to be a win
 								bool oneTrue = false;
