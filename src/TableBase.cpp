@@ -41,7 +41,7 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 		});
 	}
 	
-	std::cout << "main table size: " << totalSize / 1000000 << "M entries (" << totalRows * sizeof(U64) / 1024 / 1024 << "MB)" << std::endl;
+	std::cout << "main table size: " << totalSize << " entries (" << totalRows * sizeof(U64) / 1024 / 1024 << "MB)" << std::endl;
 	
 	try {
 		tb->mem = std::vector<std::atomic<U64>>(totalRows);
