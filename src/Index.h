@@ -325,6 +325,9 @@ U32 INLINE_INDEX_FN boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
 }
 
 
+
+// boardToIndex<false>(board): given a board with player 0 to move, returns unique index for that board
+// boardToIndex<true>(board): same but for player 1. Identical to boardToIndex<false>(board.invert())
 template <bool invert>
 BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMoveBoard) {
 	if (invert) {
@@ -374,6 +377,8 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 
 
 
+// indexToBoard<false>(index): given a unique index, returns the board with player 0 to move
+// indexToBoard<true>(index): same but for player 1. Identical to indexToBoard<false>(index).invert()
 template<bool invert>
 Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBoard) {
 
@@ -384,8 +389,13 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 	std::tie(bbk0, bbk1) = TABLES_BBKINGS[invert][rk];
 	U64 ik1 = invert ? _lzcnt_u64(bbk1) - 39 : _tzcnt_u64(bbk1);
 
+	// p0 is not allowed to have any pieces on these squares:
+	// - the squares occupied by the two kings
+	// - the squares from which p1's king can be taken
 	U64 p0CompactMask = bbk0 | bbk1 | reverseMoveBoard[invert ? 24 - ik1 : ik1];
 
+	// if p0 is threating a temple win, a pawn needs to block the temple. One pawn will be subtracted from p0,
+	// and all other pawns will not be allowed to be on the temple square, so it is added to the mask.
 	bool templeWin = reverseMoveBoard[PTEMPLE[invert]] & bbk0;
 	if (templeWin) {
 		p0CompactMask |= 1ULL << PTEMPLE[invert];
@@ -404,8 +414,9 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 
 	U64 bbp0 = indexToBoard_decompactPawnBitboard<7>(bbpc0, p0CompactMask) | bbk0; // P0 pawns skip over kings
 
-	if (templeWin)
+	if (templeWin) // add the temple pawn in to block the temple win
 		bbp0 |= 1ULL << PTEMPLE[invert];
+
 	U64 bbp1 = indexToBoard_decompactPawnBitboard<TB_MEN/2 + 1>(bbpc1, bbk1 | bbp0) | bbk1; // P1 pawns skip over kings and P0 pawns
 
 	assert(bbp0 < (1 << 25));
