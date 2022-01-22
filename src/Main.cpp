@@ -11,7 +11,7 @@ int main(int, char**) {
     if (0) {
         testIndexing(CARDS);
         return 0;
-    } else if (1) {
+    } else if (0) {
 		exhaustiveIndexTest(CARDS);
 	} else {
         generateTB(CARDS);
