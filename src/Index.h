@@ -403,7 +403,7 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 	U64 ip0 = bi.pieceIndex / PIECES1MULT[p0c][p1c];
 
 	U64 bbpc0 = PAWNTABLE_POINTERS[invert][p0c - templeWin][ip0];
-	assert(_popcnt64(bbpc0) == p0c);
+	assert(_popcnt64(bbpc0) == p0c - templeWin);
 	if (invert) {
 		assert((bbpc0 & ((1ULL << (_popcnt64(p0CompactMask) - 2)) - 1)) == 0);
 		bbpc0 >>= _popcnt64(p0CompactMask) - 2;

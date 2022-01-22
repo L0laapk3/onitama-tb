@@ -21,9 +21,9 @@ void testOne(const CardsInfo& cards) {
 		const auto& endMoveBoard = endInv ? forwardOtherMoveBoard : reverseMoveBoard;
 		for (U64 pieceCountI = 0; pieceCountI < PIECECOUNTMULT; pieceCountI++) {
 			auto& pc = OFFSET_ORDER[pieceCountI];
-			for (U64 kingI = 1; kingI < KINGSMULT; kingI++) {
+			for (U64 kingI = 0; kingI < KINGSMULT; kingI++) {
 				bi.pieceCnt_KingsIndex = pieceCountI * KINGSMULT + kingI;
-				U64 rowSize;
+				U32 rowSize;
 
 				U64 bbk0, bbk1;
 				std::tie(bbk0, bbk1) = TABLES_BBKINGS[0][kingI];
@@ -57,6 +57,8 @@ void testOne(const CardsInfo& cards) {
 						board.isWinInOne<startInv>(startMoveBoard);
 						indexToBoard<startInv>(bi, startMoveBoard);
 					}
+					board.bbp[0] &= (1ULL << 25) - 1;
+					board.bbp[1] &= (1ULL << 25) - 1;
 					if (startInv != endInv)
 						board = board.invert();
 					auto result = boardToIndex<endInv>(board, endMoveBoard);
