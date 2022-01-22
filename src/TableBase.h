@@ -10,20 +10,16 @@
 // the tablebase describes boards with player 0 to move.
 // if player 1 is to move, use boardToIndex<true> which flips the board.
 struct TableBase {
-	typedef std::array<std::atomic<U64>*, PIECECOUNTMULT * KINGSMULT> Row;
-	
-	#pragma pack(push, 1)
-	std::array<Row, CARDSMULT> tb;
-	std::atomic<U64>* end;
-	#pragma pack(pop)
+	typedef std::array<std::atomic<U64>*, PIECECOUNTMULT * KINGSMULT + 1> RefRow;
+	std::array<RefRow, CARDSMULT> refTable;
 
 	std::vector<std::atomic<U64>> mem;
 	
-    Row& operator [](int i) {
-        return tb[i];
+    RefRow& operator [](int i) {
+        return refTable[i];
     }
-    Row operator [](int i) const {
-        return tb[i];
+    RefRow operator [](int i) const {
+        return refTable[i];
     }
 };
 

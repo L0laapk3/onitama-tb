@@ -27,7 +27,7 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
 	auto tb = std::make_unique<TableBase>();
 	
-	std::cout << "reference TB size: " << PIECECOUNTMULT * KINGSMULT * CARDSMULT << " entries (" << PIECECOUNTMULT * KINGSMULT * CARDSMULT / 128 << "KB)" << std::endl;
+	std::cout << "jump table size: " << sizeof(tb->refTable) / sizeof(void*) << " entries (" << sizeof(tb->refTable) / 1024 << "KB)" << std::endl;
 
 	U64 cnt_0 = 0, totalRows = 0, totalSize = 0;
 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
@@ -41,7 +41,7 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 		});
 	}
 	
-	std::cout << "Main TB size: " << totalSize << " entries (" << totalRows / 256 / 1024 << "MB)" << std::endl;
+	std::cout << "main table size: " << totalSize / 1000000 << "M entries (" << totalRows * sizeof(U64) / 1024 / 1024 << "MB)" << std::endl;
 	
 	try {
 		tb->mem = std::vector<std::atomic<U64>>(totalRows);
@@ -65,8 +65,9 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 			cnt_0 -= _popcnt32(row[rowEntries - 1]);
 			tbMemPtrIncr += rowEntries;
 		});
+
+		cardTb.back() = tbMemPtrIncr;
 	}
-	tb->end = tbMemPtrIncr;
 
 	U64 numThreads = std::clamp<U64>(std::thread::hardware_concurrency(), 1, 1024);
 	std::vector<std::thread> threads(numThreads);
