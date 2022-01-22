@@ -207,8 +207,9 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 		// forward moves for p1 so reverse moveboards
 		const MoveBoard& moveBoard1 = cards.moveBoardsReverse[permutation.playerCards[0][1]];
 		const MoveBoard& moveBoard0 = cards.moveBoardsReverse[permutation.playerCards[0][0]];
-		auto& targetRow0 = tb[CARDS_SWAP[cardI][0][0]];
-		auto& targetRow1 = tb[CARDS_SWAP[cardI][0][1]];
+		U64 invCardI = CARDS_INVERT[cardI];
+		auto& targetRow0 = tb[CARDS_SWAP[invCardI][1][0]];
+		auto& targetRow1 = tb[CARDS_SWAP[invCardI][1][1]];
 		const MoveBoard combinedMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[1][0]], cards.moveBoardsForward[permutation.playerCards[1][1]]);
 		const MoveBoard combinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[1][0]], cards.moveBoardsReverse[permutation.playerCards[1][1]]);
 		const MoveBoard combinedOtherMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[0][0]], cards.moveBoardsForward[permutation.playerCards[0][1]]);
@@ -222,8 +223,8 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 
 		// moveboard for reversing p0
 		const MoveBoard& p0ReverseMoveBoard = cards.moveBoardsReverse[permutation.sideCard];
-		auto& p0ReverseTargetRow0 = tb[CARDS_SWAP[cardI][1][0]];
-		auto& p0ReverseTargetRow1 = tb[CARDS_SWAP[cardI][1][1]];
+		auto& p0ReverseTargetRow0 = tb[CARDS_SWAP[invCardI][0][0]];
+		auto& p0ReverseTargetRow1 = tb[CARDS_SWAP[invCardI][0][1]];
 
 		for (U64 pieceIndex = 0; currentEntry < lastEntry - 1; pieceIndex += 32) {
 			auto& entry = *currentEntry++;
