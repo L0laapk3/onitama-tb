@@ -18,9 +18,9 @@
 #include <bitset>
 
 
-#define NO_INLINE_INDEX
+//#define NO_INLINE_INDEX
 
-#if defined(NO_INLINE_INDEX) && !defined(NDEBUG)
+#if defined(NO_INLINE_INDEX) || !defined(NDEBUG)
 	#define INLINE_INDEX_FN __attribute__((noinline))
 #else
 	#define INLINE_INDEX_FN __attribute__((always_inline)) inline 

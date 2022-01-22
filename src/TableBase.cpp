@@ -179,11 +179,10 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 		U64 work = chunkCounter++;
 		if (work >= PIECECOUNTMULT * KINGSMULT * CARDSMULT)
 			break;
-		bi.pieceCnt_KingsIndex = work / CARDSMULT;
+		bi.pieceCnt_KingsIndex = work % (PIECECOUNTMULT * KINGSMULT);
 
-		U64 cardI = work % CARDSMULT;
-		U64 invCardI = CARDS_INVERT[cardI];
-		auto& cardTb = tb[invCardI];
+		U64 cardI = work / (PIECECOUNTMULT * KINGSMULT);
+		auto& cardTb = tb[cardI];
 		std::atomic<U64>* currentEntry = cardTb[bi.pieceCnt_KingsIndex];
 		std::atomic<U64>* lastEntry = cardTb[bi.pieceCnt_KingsIndex + 1];
 		if (currentEntry == lastEntry)
@@ -193,31 +192,32 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 
 		auto permutation = CARDS_PERMUTATIONS[cardI];
 		// forward moves for p1 so reverse moveboards
-		const MoveBoard& moveBoard1 = cards.moveBoardsReverse[permutation.playerCards[1][1]];
-		const MoveBoard& moveBoard0 = cards.moveBoardsReverse[permutation.playerCards[1][0]];
-		auto& targetRow0 = tb[CARDS_SWAP[cardI][1][0]];
-		auto& targetRow1 = tb[CARDS_SWAP[cardI][1][1]];
-		const MoveBoard combinedMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[0][0]], cards.moveBoardsForward[permutation.playerCards[0][1]]);
-		const MoveBoard combinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
-		const MoveBoard combinedOtherMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[1][0]], cards.moveBoardsForward[permutation.playerCards[1][1]]);
+		const MoveBoard& moveBoard1 = cards.moveBoardsReverse[permutation.playerCards[0][1]];
+		const MoveBoard& moveBoard0 = cards.moveBoardsReverse[permutation.playerCards[0][0]];
+		auto& targetRow0 = tb[CARDS_SWAP[cardI][0][0]];
+		auto& targetRow1 = tb[CARDS_SWAP[cardI][0][1]];
+		const MoveBoard combinedMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[1][0]], cards.moveBoardsForward[permutation.playerCards[1][1]]);
+		const MoveBoard combinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[1][0]], cards.moveBoardsReverse[permutation.playerCards[1][1]]);
+		const MoveBoard combinedOtherMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[0][0]], cards.moveBoardsForward[permutation.playerCards[0][1]]);
 		const MoveBoard combinedOtherMoveBoardFlip = combineMoveBoards(moveBoard0, moveBoard1);
 		const MoveBoard& moveBoard0_ = depth > 2 ? moveBoard0 : combinedMoveBoardFlip;
 
-		const MoveBoard combinedMoveBoardsFlipUnmove0 = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
-		const MoveBoard combinedMoveBoardsFlipUnmove1 = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][0]]);
-		const MoveBoard combinedMoveBoardsUnmove0 = combineMoveBoards(cards.moveBoardsForward[permutation.sideCard], cards.moveBoardsForward[permutation.playerCards[0][1]]);
-		const MoveBoard combinedMoveBoardsUnmove1 = combineMoveBoards(cards.moveBoardsForward[permutation.sideCard], cards.moveBoardsForward[permutation.playerCards[0][0]]);
+		const MoveBoard combinedMoveBoardsFlipUnmove0 = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[1][1]]);
+		const MoveBoard combinedMoveBoardsFlipUnmove1 = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[1][0]]);
+		const MoveBoard combinedMoveBoardsUnmove0 = combineMoveBoards(cards.moveBoardsForward[permutation.sideCard], cards.moveBoardsForward[permutation.playerCards[1][1]]);
+		const MoveBoard combinedMoveBoardsUnmove1 = combineMoveBoards(cards.moveBoardsForward[permutation.sideCard], cards.moveBoardsForward[permutation.playerCards[1][0]]);
 
 		// moveboard for reversing p0
 		const MoveBoard& p0ReverseMoveBoard = cards.moveBoardsReverse[permutation.sideCard];
-		auto& p0ReverseTargetRow0 = tb[CARDS_SWAP[cardI][0][0]];
-		auto& p0ReverseTargetRow1 = tb[CARDS_SWAP[cardI][0][1]];
+		auto& p0ReverseTargetRow0 = tb[CARDS_SWAP[cardI][1][0]];
+		auto& p0ReverseTargetRow1 = tb[CARDS_SWAP[cardI][1][1]];
 
-		for (; currentEntry != lastEntry; currentEntry++) {
-			auto& entry = *currentEntry;
+		for (U64 pieceIndex = 0; currentEntry != lastEntry; pieceIndex += 32) {
+			auto& entry = *currentEntry++;
 			U64 newP1Wins = 0;
 			for (U32 bits = ~entry; bits; bits &= bits - 1) {
 				U64 bitIndex = _tzcnt_u64(bits);
+				bi.pieceIndex = pieceIndex + bitIndex;
 				Board board = indexToBoard<true>(bi, combinedOtherMoveBoardFlip); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
 
 				// if (board.isWinInOne<true>(combinedOtherMoveBoardFlip)) {
@@ -248,7 +248,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 									.bbk = { board.bbk[0], board.bbk[1] },
 								};
 
-								auto ti = boardToIndex<false>(targetBoard, combinedMoveBoard);
+								auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardFlip);
 								// the resulting board has p0 to move and needs to be a win
 								bool oneTrue = false;
 								if (landPiece & moveBoard0[pp]) {
@@ -284,7 +284,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							if (depth == 2)
 								goto notWin;
 
-							auto ti = boardToIndex<false>(targetBoard, combinedMoveBoard);
+							auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardFlip);
 							bool oneTrue = false;
 							if (landPiece & moveBoard0_[pp]) {
 								oneTrue = true;
@@ -334,11 +334,11 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							bool isWinInOne0 = (pk1Unmove0 & targetBoard.bbp[0]) || (kingInTempleRange0 && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
 							bool isWinInOne1 = (pk1Unmove1 & targetBoard.bbp[0]) || (kingInTempleRange1 && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
 							if (!isWinInOne0) {
-								auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsUnmove0);
+								auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsFlipUnmove0);
 								p0ReverseTargetRow0[ti.pieceCnt_KingsIndex][ti.pieceIndex / 32].fetch_or(0x100000001ULL << (ti.pieceIndex % 32), std::memory_order_relaxed);
 							}
 							if (!isWinInOne1) {
-								auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsUnmove1);
+								auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsFlipUnmove1);
 								p0ReverseTargetRow1[ti.pieceCnt_KingsIndex][ti.pieceIndex / 32].fetch_or(0x100000001ULL << (ti.pieceIndex % 32), std::memory_order_relaxed);
 							}
 						}
@@ -361,11 +361,11 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							bool isWinInOne0 = (pk1Unmove0 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove0 & targetBoard.bbk[0]) && !pawnTempleBlock);
 							bool isWinInOne1 = (pk1Unmove1 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove1 & targetBoard.bbk[0]) && !pawnTempleBlock);
 							if (!isWinInOne0) {
-								auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsUnmove0);
+								auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsFlipUnmove0);
 								p0ReverseTargetRow0[ti.pieceCnt_KingsIndex][ti.pieceIndex / 32].fetch_or(0x100000001ULL << (ti.pieceIndex % 32), std::memory_order_relaxed);
 							}
 							if (!isWinInOne1) {
-								auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsUnmove1);
+								auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsFlipUnmove1);
 								p0ReverseTargetRow1[ti.pieceCnt_KingsIndex][ti.pieceIndex / 32].fetch_or(0x100000001ULL << (ti.pieceIndex % 32), std::memory_order_relaxed);
 							}
 						}
@@ -391,11 +391,11 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 								bool isWinInOne0 = (pk1Unmove0 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove0 & targetBoard.bbk[0]) && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
 								bool isWinInOne1 = (pk1Unmove1 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove1 & targetBoard.bbk[0]) && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
 								if (!isWinInOne0) {
-									auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsUnmove0);
+									auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsFlipUnmove0);
 									p0ReverseTargetRow0[ti.pieceCnt_KingsIndex][ti.pieceIndex / 32].fetch_or(0x100000001ULL << (ti.pieceIndex % 32), std::memory_order_relaxed);
 								}
 								if (!isWinInOne1) {
-									auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsUnmove1);
+									auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsFlipUnmove1);
 									p0ReverseTargetRow1[ti.pieceCnt_KingsIndex][ti.pieceIndex / 32].fetch_or(0x100000001ULL << (ti.pieceIndex % 32), std::memory_order_relaxed);
 								}
 							}
@@ -418,11 +418,11 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 								bool isWinInOne0 = (pk1Unmove0 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove0 & targetBoard.bbk[0]) && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
 								bool isWinInOne1 = (pk1Unmove1 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove1 & targetBoard.bbk[0]) && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
 								if (!isWinInOne0) {
-									auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsUnmove0);
+									auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsFlipUnmove0);
 									p0ReverseTargetRow0[ti.pieceCnt_KingsIndex][ti.pieceIndex / 32].fetch_or(0x100000001ULL << (ti.pieceIndex % 32), std::memory_order_relaxed);
 								}
 								if (!isWinInOne1) {
-									auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsUnmove1);
+									auto ti = boardToIndex<false>(targetBoard, combinedMoveBoardsFlipUnmove1);
 									p0ReverseTargetRow1[ti.pieceCnt_KingsIndex][ti.pieceIndex / 32].fetch_or(0x100000001ULL << (ti.pieceIndex % 32), std::memory_order_relaxed);
 								}
 							}
