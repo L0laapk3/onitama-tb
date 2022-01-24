@@ -44,7 +44,7 @@ TBGen generateTB(const CardsInfo& cards) {
 		cnt_0 -= _popcnt64(row.back());
 	}
 
-	const U64 numThreads = std::clamp<U64>(std::thread::hardware_concurrency(), 1, 1024);
+	const U64 numThreads = std::clamp<U64>(std::thread::hardware_concurrency(), 1, 1);
 	std::vector<std::thread> threads(numThreads);
 
 	U64 depth = 1;
@@ -61,7 +61,7 @@ TBGen generateTB(const CardsInfo& cards) {
 		if      (depth == 1) targetFn = &generateFirstWins;
 		else if (depth == 2) targetFn = &singleDepthPass<2>;
 		// else if (depth == 3) targetFn = &singleDepthPass<3>;
-		else                 targetFn = &singleDepthPass<3>;
+		else                 break;//targetFn = &singleDepthPass<3>;
 
 		for (U64 i = 0; i < numThreads; i++)
 			threads[i] = std::thread(targetFn, std::ref(cards), std::ref(tb), std::ref(chunkCounter), std::ref(modified));
@@ -166,6 +166,7 @@ void generateFirstWins(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& 
 template<int depth>
 void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified) {
 	bool mod = false;
+	U64 i = 0;
 	while (true) {
 		U64 currChunk = chunkCounter++;
 		if (currChunk >= NUM_CHUNKS)
@@ -183,7 +184,8 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 		TableBaseRow& targetRow1 = tb[CARDS_SWAP[invCardI][1][1]];
 		const MoveBoard combinedMoveBoardFlip = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[1][0]], cards.moveBoardsReverse[permutation.playerCards[1][1]]);
 		const MoveBoard combinedOtherMoveBoardFlip = combineMoveBoards(moveBoard0, moveBoard1);
-		
+		const MoveBoard combinedOtherMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[0][0]], cards.moveBoardsForward[permutation.playerCards[0][1]]);
+
 		const MoveBoard combinedMoveBoardsFlipUnmove0 = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[1][1]]);
 		const MoveBoard combinedMoveBoardsFlipUnmove1 = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[1][0]]);
 
@@ -196,8 +198,17 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 			auto& entry = row[tbIndex];
 			U64 newP1Wins = 0;
 			for (U32 bits = ~entry; bits; bits &= bits - 1) {
+				U64 win = 0;
 				U64 bitIndex = _tzcnt_u64(bits);
-				Board board = indexToBoard<1>(tbIndex * 32 + bitIndex); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
+				// if (++i >= 149035927)
+				// 	std::cout << std::endl;
+				U64 boardIndex = tbIndex * 32 + bitIndex;
+				Board board = indexToBoard<1>(boardIndex); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
+				// if (board.isWinInOne<1>(combinedOtherMoveBoard))
+				// 	std::cout << "piss" << std::endl;
+				// if (i >= 149035927)
+				// 	board.print();
+				// std::cout << "win in 1: " << board.isWinInOne<1>(combinedOtherMoveBoard) << std::endl;
 				bool isTempleThreatened = board.isTempleKingInRange<0>(combinedMoveBoardFlip);
 				if (!(isTempleThreatened && board.isTempleFree<0>())) { // if p0 can just walk to temple
 					U64 kingThreatenPawns = board.isTakeWinInOne<0>(combinedMoveBoardFlip);
@@ -427,7 +438,11 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 					}
 				}
 
+				// win = 1;
+				std::cout << std::hex << cardI << ' ' << board.bbp[0] << ' ' << board.bbp[1] << ' ' << (board.bbk[0] || board.bbk[1]) << std::endl;
 			notWin:;
+				// if (i >= 149035926)
+				// 	std::cout << win << std::endl;
 			}
 
 			if (newP1Wins) {

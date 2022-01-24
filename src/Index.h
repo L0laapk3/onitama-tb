@@ -18,7 +18,7 @@
 #include <bitset>
 
 
-//  #define NO_INLINE_INDEX
+  #define NO_INLINE_INDEX
 
 #if defined(NO_INLINE_INDEX) && !defined(NDEBUG)
 	#define INLINE_INDEX_FN __attribute__((noinline))
@@ -93,15 +93,15 @@ constexpr auto OFFSETS_SUB_EMPTY = [](){
 			U64 offset = OFFSETS[p0c][p1c];
 
 			// when not all pieces are on the board, lzcnt/tzcnt returns 64. We include this here at compile-time in the offset tables.
-			if (p0c < 4 && TB_MEN > 8) offset -= 32 * 31 * 30 * 29 / 24;
-			if (p0c < 3 && TB_MEN > 6) offset -= 32 * 31 * 30 / 6;
-			if (p0c < 2) offset -= 32 * 31 / 2;
-			if (p0c < 1) offset -= 32;
+			if (p0c < 4 && TB_MEN > 8) offset -= PIECES1MULT[p0c][p1c] * 32 * 31 * 30 * 29 / 24;
+			if (p0c < 3 && TB_MEN > 6) offset -= PIECES1MULT[p0c][p1c] * 32 * 31 * 30 / 6;
+			if (p0c < 2) offset -= PIECES1MULT[p0c][p1c] * 32 * 31 / 2;
+			if (p0c < 1) offset -= PIECES1MULT[p0c][p1c] * 32;
 
-			if (p1c < 4 && TB_MEN > 8) offset -= PIECES0MULT[p0c] * 32 * 31 * 30 * 29 / 24;
-			if (p1c < 3 && TB_MEN > 6) offset -= PIECES0MULT[p0c] * 32 * 31 * 30 / 6;
-			if (p1c < 2) offset -= PIECES0MULT[p0c] * 32 * 31 / 2;
-			if (p1c < 1) offset -= PIECES0MULT[p0c] * 32;
+			if (p1c < 4 && TB_MEN > 8) offset -= 32 * 31 * 30 * 29 / 24;
+			if (p1c < 3 && TB_MEN > 6) offset -= 32 * 31 * 30 / 6;
+			if (p1c < 2) offset -= 32 * 31 / 2;
+			if (p1c < 1) offset -= 32;
 
 			a[p0c][p1c] = offset;
 		}
@@ -335,11 +335,11 @@ U64 INLINE_INDEX_FN boardToIndex(Board board) {
 	r *= KINGSMULT;
 	r += rk;
 
-	r *= PIECES1MULT[pp0cnt][pp1cnt];
-	r += rp1;
-
 	r *= PIECES0MULT[pp0cnt];
 	r += rp0;
+
+	r *= PIECES1MULT[pp0cnt][pp1cnt];
+	r += rp1;
 
 	r += offset;
 	assert(r < TB_ROW_SIZE);
@@ -359,10 +359,11 @@ FromIndexHalfReturn INLINE_INDEX_FN fromIndexHelper(U64 index) {
 	constexpr U64 p0mult = PIECES0MULT[p0c];
 	constexpr U64 p1mult = PIECES1MULT[p0c][p1c];
 
+	U64 ip1 = index % p1mult;
+	index /= p1mult;
 	U64 ip0 = index % p0mult;
 	index /= p0mult;
-	U64 ip1 = index % p1mult;
-	U64 ik = index / p1mult;
+	U64 ik = index;
 
 	// if (ik == 0)
 	// 	std::cout << p0c << " " << p1c << " " << ik << " " << ip0 << " " << ip1 << std::endl;
