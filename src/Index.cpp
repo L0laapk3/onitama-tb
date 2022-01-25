@@ -119,7 +119,7 @@ void exhaustiveIndexTest(const CardsInfo& cards) {
 	U64 noWinIn1Count = 0;
 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
 		auto permutation = CARDS_PERMUTATIONS[cardI];
-		const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
+		const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[0][0]], cards.moveBoardsForward[permutation.playerCards[0][1]]);
 
 		for (U64 bbk0 = 1ULL; bbk0 < 1ULL << 25; bbk0 <<= 1)
 			if (bbk0 != 1ULL << PTEMPLE[0])
@@ -140,21 +140,20 @@ void exhaustiveIndexTest(const CardsInfo& cards) {
 															.bbp = { bbp0, bbp1 },
 															.bbk = { bbk0, bbk1 },
 														};
-																														// board.print();
 
-														if (!board.isWinInOne<false>(reverseMoveBoard)) {
-															auto bi = boardToIndex<false>(board, reverseMoveBoard);
-															auto result = indexToBoard<false>(bi, reverseMoveBoard);
+														if (!board.isWinInOne<true>(reverseMoveBoard)) {
+															auto bi = boardToIndex<true>(board, reverseMoveBoard);
+															auto result = indexToBoard<true>(bi, reverseMoveBoard);
 															if (result.bbp[0] != board.bbp[0] || result.bbp[1] != board.bbp[1] || result.bbk[0] != board.bbk[0] || result.bbk[1] != board.bbk[1]) {
 																std::cout << "problem: " << bi.pieceCnt_kingsIndex << ' ' << bi.pieceIndex << std::endl;
 																board.print();
 																std::cout << std::endl;
 																result.print();
 																std::cout << std::endl;
-																if (result.isWinInOne<false>(reverseMoveBoard))
+																if (result.isWinInOne<true>(reverseMoveBoard))
 																	std::cout << "double wtf" << std::endl;
-																boardToIndex<false>(board, reverseMoveBoard);
-																indexToBoard<false>(bi, reverseMoveBoard);
+																boardToIndex<true>(board, reverseMoveBoard);
+																indexToBoard<true>(bi, reverseMoveBoard);
 															}
 															noWinIn1Count++;
 														}

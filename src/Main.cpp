@@ -8,6 +8,8 @@
 int main(int, char**) {
 	const CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB };
 
+	auto permutation = CARDS_PERMUTATIONS[8];
+
     if (0) {
         testIndexing(CARDS);
         return 0;
