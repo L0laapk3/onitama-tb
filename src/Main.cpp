@@ -13,7 +13,7 @@ int main(int, char**) {
         return 0;
     } else if (0) {
 		exhaustiveIndexTest(CARDS);
-	} else if (0) {
+	} else if (1) {
         generateTB(CARDS);
     } else {
 

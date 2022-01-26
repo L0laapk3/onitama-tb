@@ -1,6 +1,6 @@
 #pragma once
 
-#define TB_MEN 10
+#define TB_MEN 6
 
 // #define COUNT_BOARDS
 
