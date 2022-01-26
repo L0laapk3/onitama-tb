@@ -3,6 +3,7 @@
 #include "Types.h"
 
 #include <array>
+#include <functional>
 
 
 constexpr U32 BOAR		= 0b00000'00100'01010'00000'00000;
@@ -21,6 +22,8 @@ constexpr U32 OX		= 0b00000'00100'01000'00100'00000;
 constexpr U32 RABBIT	= 0b00000'01000'10000'00010'00000;
 constexpr U32 ROOSTER	= 0b00000'01000'01010'00010'00000;
 constexpr U32 TIGER		= 0b00100'00000'00000'00100'00000;
+
+constexpr std::array<U32, 16> ALL_CARDS { BOAR, COBRA, CRAB, CRANE, DRAGON, EEL, ELEPHANT, FROG, GOOSE, HORSE, MANTIS, MONKEY, OX, RABBIT, ROOSTER, TIGER };
 
 struct CardPermutation {
 	std::array<std::array<U8, 2>, 2> playerCards;
@@ -163,3 +166,5 @@ struct CardsInfo {
 
 
 void print(const MoveBoard& moves);
+
+void iterateCardCombinations(std::function<void(const CardsInfo&, const std::array<U32, 5>&)> cb);
