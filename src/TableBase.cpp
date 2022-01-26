@@ -16,7 +16,7 @@
 #include <x86intrin.h>
 
 
-constexpr bool STORE_WIN = 1;
+constexpr bool STORE_WIN = false;
 constexpr U64 NUM_BOARDS_PER_U64 = STORE_WIN ? 32 : 64;
 template <typename T>
 constexpr auto countResolved(T& bits) {
@@ -77,7 +77,7 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 			if (rowSize == 0)
 				return;
 			U64 rowEntries = (rowSize + NUM_BOARDS_PER_U64 - 1) / NUM_BOARDS_PER_U64;
-			row[rowEntries - 1] = (1ULL << NUM_BOARDS_PER_U64) - (1ULL << (((rowSize + NUM_BOARDS_PER_U64 - 1) % NUM_BOARDS_PER_U64) + 1)); // mark final rows as resolved so we dont have to worry about it
+			row[rowEntries - 1] = (NUM_BOARDS_PER_U64 < 64 ? 1ULL << NUM_BOARDS_PER_U64 : 0) - (1ULL << (((rowSize + NUM_BOARDS_PER_U64 - 1) % NUM_BOARDS_PER_U64) + 1)); // mark final rows as resolved so we dont have to worry about it
 			// if (cardI == 0 && pieceCnt_kingsIndex < 5)
 			// 	std::cout << cardI << ' ' << pieceCnt_kingsIndex << ' ' << std::hex << tbMemPtrIncr << ' ' << row[rowEntries - 1] << std::endl;
 			cnt_0 -= countResolved(row[rowEntries - 1]);
@@ -186,7 +186,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 		for (U64 pieceIndex = 0; currentEntry < lastEntry; pieceIndex += NUM_BOARDS_PER_U64) {
 			auto& entry = *currentEntry++;
 			U64 newP1Wins = 0;
-			for (U32 bits = ~entry; bits; bits &= bits - 1) {
+			for (U64 bits = ~entry; bits; bits &= bits - 1) {
 				// if (++i >= 149035927)
 				// 	std::cout << std::endl;
 				U64 win = 0;
