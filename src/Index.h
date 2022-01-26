@@ -75,7 +75,7 @@ constexpr auto GENERATE_OFFSETS() {
             for (int k = -1; k <= (j == 0 ? 0 : 1); k += 2)
                 if (i - j >= 0 && i + j <= TB_MEN - 2) {
                     int p0c = (i - k * j) / 2, p1c = (i + k * j) / 2;
-					b[p0c][p1c] = index;
+					b[p0c][p1c] = index * KINGSMULT;
                     a[index++] = { p0c, p1c };
                 }
 	// for (int p0c = TB_MEN/2-1; p0c --> 0; )
@@ -135,13 +135,17 @@ constexpr auto OFFSETS_SUB_EMPTY = [](){
 	return a;
 }();
 
-constexpr auto TABLE_TWOKINGS = [](){
-	std::array<U16, 32*25> a{ (U16)-1 };
-	U16 i = 0;
-	for (int j = 0; j < 25; j++)
-		for (int k = 0; k < 25; k++)
-			if (k != j && j != PTEMPLE[0] && k != PTEMPLE[1])
-          		a[j*32 + k] = i++;
+constexpr auto TABLES_TWOKINGS = [](){
+	std::array<std::array<U16, 32*25>, 2> a{ (U16)-1 };
+	
+	for (U64 inv = 0; inv < 2; inv++) {
+		U16 i = 0;
+		for (int j = 0; j < 25; j++)
+			for (int k = 0; k < 25; k++) {
+				if (k != j && j != PTEMPLE[0] && k != PTEMPLE[1])
+					a[inv][(inv ? 24 - j : j)*32 + (inv ? 24 - k : k)] = i++;
+			}
+	}
     return a;
 }();
 constexpr auto TABLES_BBKINGS = [](){
@@ -330,48 +334,92 @@ U32 INLINE_INDEX_FN boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
 }
 
 
-
+struct BoardToIndexIntermediate {
+	U32 mul;
+	U32 rp1;
+};
 // boardToIndex<false>(board): given a board with player 0 to move, returns unique index for that board
 // boardToIndex<true>(board): same but for player 1. Identical to boardToIndex<false>(board.invert())
 template <bool invert>
-BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMoveBoard) {
+BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMoveBoard, BoardToIndexIntermediate& im) {
 	if (invert) {
 		std::swap(board.bbp[0], board.bbp[1]);
 		std::swap(board.bbk[0], board.bbk[1]);
 	}
 	
-	U64 ik0 = invert ? _lzcnt_u64(board.bbk[0]) - 39 : _tzcnt_u64(board.bbk[0]); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
-	U64 ik1 = invert ? _lzcnt_u64(board.bbk[1]) - 39 : _tzcnt_u64(board.bbk[1]);
-	U32 rk = TABLE_TWOKINGS[ik0*32 + ik1];
+	U64 ik0 = _tzcnt_u64(board.bbk[0]); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
+	U64 ik1 = _tzcnt_u64(board.bbk[1]);
+	U32 rk = TABLES_TWOKINGS[invert][ik0*32 + ik1];
 
-	board.bbp[1] ^= board.bbk[1];
-
+	board.bbp[1] &= ~board.bbk[1];
 	U64 bbpc1 = boardToIndex_compactPawnBitboard<TB_MEN/2 + 1>(board.bbp[1], board.bbp[0] | board.bbk[1]); // P1 pawns skip over kings and P0 pawns
 
-	board.bbp[0] ^= board.bbk[0];
+	board.bbp[0] &= ~board.bbk[0];
 	U64 pp0cnt = _popcnt64(board.bbp[0]);
 	U64 pp1cnt = _popcnt64(board.bbp[1]);
 	U32 rpc = OFFSET_LOOKUP[pp0cnt][pp1cnt];
+	im.mul = PIECES1MULT[pp0cnt][pp1cnt];
+	auto& offsetArr = OFFSETS_SUB_EMPTY[pp0cnt][pp1cnt];
 
 	// prevent king wins: any squares threatening the p1 king need to be masked out for p0.
-	U64 p0CompactMask = board.bbk[0] | board.bbk[1] | reverseMoveBoard[invert ? 24 - ik1 : ik1];
+	U64 p0CompactMask = board.bbk[0] | board.bbk[1] | reverseMoveBoard[ik1];
 	// prevent temple wins: if p0 king is threatening temple win, one pawn needs to block the temple.
 	bool templeWin = reverseMoveBoard[PTEMPLE[invert]] & board.bbk[0];
 	if (templeWin) {
 		assert(board.bbp[0] & (1 << PTEMPLE[invert]));
-		board.bbp[0] ^= (1 << PTEMPLE[invert]);
+		board.bbp[0] &= ~(1 << PTEMPLE[invert]);
 		p0CompactMask |= (1 << PTEMPLE[invert]);
 	}
+	
+	U32 offset = offsetArr[templeWin];
+
 	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces
 
-	U32 rp1 = boardToIndex_pawnBitboardToIndex<invert>(bbpc1, 9 + pp0cnt); // possible positions: 23 - pp0cnt
+	im.rp1 = boardToIndex_pawnBitboardToIndex<invert>(bbpc1, 9 + pp0cnt); // possible positions: 23 - pp0cnt
 	U32 rp0 = boardToIndex_pawnBitboardToIndex<invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // possible positions: 25 - popcnt(mask)
-	
-	U32 offset = OFFSETS_SUB_EMPTY[pp0cnt][pp1cnt][templeWin];
 
 	return {
-		.pieceCnt_kingsIndex = rpc * KINGSMULT + rk,
-		.pieceIndex = rp0 * PIECES1MULT[pp0cnt][pp1cnt] + rp1 - offset,
+		.pieceCnt_kingsIndex = rpc + rk,
+		.pieceIndex = rp0 * im.mul + im.rp1 - offset,
+	};
+}
+template <bool invert>
+BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMoveBoard) {
+	BoardToIndexIntermediate im;
+	return boardToIndex<invert>(board, reverseMoveBoard, im);
+}
+
+
+template <bool invert>
+BoardIndex INLINE_INDEX_FN boardToIndexFromIntermediate(Board board, const MoveBoard& reverseMoveBoard, BoardIndex& bi, BoardToIndexIntermediate& im) {
+	if (invert) {
+		std::swap(board.bbp[0], board.bbp[1]);
+		std::swap(board.bbk[0], board.bbk[1]);
+	}
+
+	board.bbp[0] &= ~board.bbk[0];
+	U64 pp0cnt = _popcnt64(board.bbp[0]);
+	U64 pp1cnt = _popcnt64(board.bbp[1]) - 1;
+	auto& offsetArr = OFFSETS_SUB_EMPTY[pp0cnt][pp1cnt];
+
+	U64 ik1 = _tzcnt_u64(board.bbk[1]);
+	U64 p0CompactMask = board.bbk[0] | board.bbk[1] | reverseMoveBoard[ik1];
+	
+	bool templeWin = reverseMoveBoard[PTEMPLE[invert]] & board.bbk[0];
+	if (templeWin) {
+		assert(board.bbp[0] & (1 << PTEMPLE[invert]));
+		board.bbp[0] &= ~(1 << PTEMPLE[invert]);
+		p0CompactMask |= (1 << PTEMPLE[invert]);
+	}
+	
+	U32 offset = offsetArr[templeWin];
+
+	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces
+	U32 rp0 = boardToIndex_pawnBitboardToIndex<invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // possible positions: 25 - popcnt(mask)
+
+	return {
+		.pieceCnt_kingsIndex = bi.pieceCnt_kingsIndex,
+		.pieceIndex = rp0 * im.mul + im.rp1 - offset,
 	};
 }
 
