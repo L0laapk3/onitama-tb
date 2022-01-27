@@ -151,6 +151,10 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 	bool mod = false;
 	BoardIndex bi;
 	U64 i = 0;
+	U64 lastCard = -1;
+
+	MoveBoard moveBoard_p0_card01_rev, moveBoard_p1_card01_rev, moveBoard_p1_card01, moveBoard_p0_card1side_rev, moveBoard_p0_card0side_rev;
+
 	while (true) {
 		U64 work = chunkCounter++;
 		if (work >= PIECECOUNTMULT * KINGSMULT * CARDSMULT) {
@@ -169,25 +173,30 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 
 		// { 0, 4, 1, 2, 3 }, //BOAR, OX, ELEPHANT, HORSE, CRAB
 		U64 cardI = CARDS_INVERT[invCardI];
-		auto permutation = CARDS_PERMUTATIONS[cardI]; // cardI = 5: p0: BOAR CRAB, p1: OX ELEPHANT, swap: HORSE
-		// forward moves for p1 so reverse moveboards
-		const MoveBoard& moveBoard_p1_card0_rev = cards.moveBoardsReverse[permutation.playerCards[1][0]];
-		const MoveBoard& moveBoard_p1_card1_rev = cards.moveBoardsReverse[permutation.playerCards[1][1]];
+
 		auto& targetRow0 = tb[CARDS_SWAP[cardI][1][0]];
 		auto& targetRow1 = tb[CARDS_SWAP[cardI][1][1]];
-		const MoveBoard moveBoard_p0_card01_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
-		const MoveBoard moveBoard_p1_card01_rev = combineMoveBoards(moveBoard_p1_card0_rev, moveBoard_p1_card1_rev);
-		const MoveBoard moveBoard_p1_card01 = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[1][0]], cards.moveBoardsForward[permutation.playerCards[1][1]]);
+		auto& p0ReverseTargetRow0 = tb[CARDS_SWAP[cardI][0][0]];
+		auto& p0ReverseTargetRow1 = tb[CARDS_SWAP[cardI][0][1]];
+		auto permutation = CARDS_PERMUTATIONS[cardI]; // cardI = 5: p0: BOAR CRAB, p1: OX ELEPHANT, swap: HORSE
 		
-		const MoveBoard& moveBoard_p1_card0_or_01 = depth > 2 ? moveBoard_p1_card0_rev : moveBoard_p1_card01_rev;
+		const MoveBoard& moveBoard_p1_card0_rev = cards.moveBoardsReverse[permutation.playerCards[1][0]];
+		const MoveBoard& moveBoard_p1_card1_rev = cards.moveBoardsReverse[permutation.playerCards[1][1]];
 
-		const MoveBoard moveBoard_p0_card1side_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
-		const MoveBoard moveBoard_p0_card0side_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][0]]);
+		if (lastCard != invCardI) {
+			[[unlikely]]
+			lastCard = invCardI;
+			moveBoard_p0_card01_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
+			moveBoard_p1_card01_rev = combineMoveBoards(moveBoard_p1_card0_rev, moveBoard_p1_card1_rev);
+			moveBoard_p1_card01 = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[1][0]], cards.moveBoardsForward[permutation.playerCards[1][1]]);
+			moveBoard_p0_card1side_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
+			moveBoard_p0_card0side_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][0]]);
+		}
+
+		const MoveBoard& moveBoard_p1_card0_or_01 = depth > 2 ? moveBoard_p1_card0_rev : moveBoard_p1_card01_rev;
 
 		// moveboard for reversing p0
 		const MoveBoard& moveboard_p0_cardside_rev = cards.moveBoardsReverse[permutation.sideCard];
-		auto& p0ReverseTargetRow0 = tb[CARDS_SWAP[cardI][0][0]];
-		auto& p0ReverseTargetRow1 = tb[CARDS_SWAP[cardI][0][1]];
 
 		for (U64 pieceIndex = 0; currentEntry < lastEntry; pieceIndex += NUM_BOARDS_PER_U64) {
 			auto& entry = *currentEntry++;
