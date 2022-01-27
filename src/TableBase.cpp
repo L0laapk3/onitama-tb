@@ -154,13 +154,14 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 	while (true) {
 		U64 work = chunkCounter++;
 		if (work >= PIECECOUNTMULT * KINGSMULT * CARDSMULT) {
-			std::cout << i << std::endl;
+			// std::cout << i << std::endl;
 			break;
 		}
 		bi.pieceCnt_kingsIndex = work % (PIECECOUNTMULT * KINGSMULT);
-
+		
 		U64 invCardI = optimalIterationOrder[work / (PIECECOUNTMULT * KINGSMULT)];
 		auto& cardTb = tb[invCardI];
+
 		std::atomic<U64>* currentEntry = cardTb[bi.pieceCnt_kingsIndex];
 		std::atomic<U64>* lastEntry = cardTb[bi.pieceCnt_kingsIndex + 1];
 		if (currentEntry == lastEntry)
@@ -230,7 +231,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 								};
 								
 								if (targetBoard.isWinInOne<0>(moveBoard_p0_card01_rev)) { //temporary solution, not optimised (this is because some edge cases were allowed to fall trough)
-									i++;
+									// i++;
 									continue;
 								}
 
@@ -242,7 +243,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 									if ((targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
 										goto notWin;
 								}
-								if (!oneTrue || landPiece & moveBoard_p1_card1_rev[pp])
+								if (depth > 2 && (!oneTrue || landPiece & moveBoard_p1_card1_rev[pp]))
 									if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
 										goto notWin;
 							}
@@ -278,7 +279,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 									goto notWin;
 							}
 								
-							if (!oneTrue || (landPiece & moveBoard_p1_card1_rev[pp]))
+							if (depth > 2 && (!oneTrue || (landPiece & moveBoard_p1_card1_rev[pp])))
 								if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
 									goto notWin;
 						}
