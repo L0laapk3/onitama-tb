@@ -150,8 +150,10 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 	U64 i = 0;
 	while (true) {
 		U64 work = chunkCounter++;
-		if (work >= PIECECOUNTMULT * KINGSMULT * CARDSMULT)
+		if (work >= PIECECOUNTMULT * KINGSMULT * CARDSMULT) {
+			std::cout << i << std::endl;
 			break;
+		}
 		bi.pieceCnt_kingsIndex = work % (PIECECOUNTMULT * KINGSMULT);
 
 		U64 invCardI = optimalIterationOrder[work / (PIECECOUNTMULT * KINGSMULT)];
@@ -204,10 +206,11 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 				bool isTempleThreatened = board.isTempleKingInRange<0>(moveBoard_p0_card01_flip);
 				if (!(isTempleThreatened && board.isTempleFree<0>())) { // if p0 can just walk to temple
 					U64 kingThreatenPawns = board.isTakeWinInOne<0>(moveBoard_p0_card01_flip);
+					U64 landMaskStore = kingThreatenPawns ? kingThreatenPawns : ~board.bbp[1];
 					U64 scan = board.bbp[1] & ~board.bbk[1];
 					while (scan) {
 						U64 sourcePiece = scan & -scan;
-						U64 landMask = kingThreatenPawns ? kingThreatenPawns : ~board.bbp[1];
+						U64 landMask = landMaskStore;
 						U64 bbp = board.bbp[1] - sourcePiece;
 						U64 pp = _tzcnt_u64(sourcePiece);
 						U64 land = moveBoard_p1_card01[pp] & landMask;
@@ -223,7 +226,8 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 									.bbk = { board.bbk[0], board.bbk[1] },
 								};
 								
-								if (targetBoard.isWinInOne<false>(moveBoard_p0_card01_flip)) { //temporary solution, not optimised (this is because some edge cases were allowed to fall trough)
+								if (targetBoard.isWinInOne<0>(moveBoard_p0_card01_flip)) { //temporary solution, not optimised (this is because some edge cases were allowed to fall trough)
+									i++;
 									continue;
 								}
 
@@ -290,7 +294,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 				// }
 
 				// all p1 moves result in win for p0. mark state as won for p0
-				newP1Wins |= 0x000000001ULL << bitIndex;
+				newP1Wins |= 1ULL << bitIndex;
 
 				
 				{ // also mark all states with p0 to move that have the option of moving to this board
