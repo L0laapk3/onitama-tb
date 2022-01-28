@@ -143,8 +143,6 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
 
 
-
-std::array<U64, 30> optimalIterationOrder{ 5, 9, 2, 11, 1, 10, 13, 3, 8, 16, 0, 7, 4, 6, 12, 18, 24, 22, 25, 14, 21, 26, 27, 20, 15, 23, 28, 17, 19, 29 };
 // iterate over unresolved states to find p0 wins with p1 to move. Check if all possible p1 moves result in wins for p0.
 template<int depth>
 void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified) {
@@ -163,7 +161,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 		}
 		bi.pieceCnt_kingsIndex = work % (PIECECOUNTMULT * KINGSMULT);
 		
-		U64 invCardI = optimalIterationOrder[work / (PIECECOUNTMULT * KINGSMULT)];
+		U64 invCardI = work / (PIECECOUNTMULT * KINGSMULT);
 		auto& cardTb = tb[invCardI];
 
 		std::atomic<U64>* currentEntry = cardTb[bi.pieceCnt_kingsIndex];
