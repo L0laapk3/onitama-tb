@@ -169,14 +169,13 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 		if (currentEntry == lastEntry)
 			continue;
 
-		// { 0, 4, 1, 2, 3 }, //BOAR, OX, ELEPHANT, HORSE, CRAB
 		U64 cardI = CARDS_INVERT[invCardI];
 
 		auto& targetRow0 = tb[CARDS_SWAP[cardI][1][0]];
 		auto& targetRow1 = tb[CARDS_SWAP[cardI][1][1]];
 		auto& p0ReverseTargetRow0 = tb[CARDS_SWAP[cardI][0][0]];
 		auto& p0ReverseTargetRow1 = tb[CARDS_SWAP[cardI][0][1]];
-		auto permutation = CARDS_PERMUTATIONS[cardI]; // cardI = 5: p0: BOAR CRAB, p1: OX ELEPHANT, swap: HORSE
+		auto permutation = CARDS_PERMUTATIONS[cardI];
 		
 		const MoveBoard& moveBoard_p1_card0_rev = cards.moveBoardsReverse[permutation.playerCards[1][0]];
 		const MoveBoard& moveBoard_p1_card1_rev = cards.moveBoardsReverse[permutation.playerCards[1][1]];
@@ -193,27 +192,18 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 
 		const MoveBoard& moveBoard_p1_card0_or_01 = depth > 2 ? moveBoard_p1_card0_rev : moveBoard_p1_card01_rev;
 
-		// moveboard for reversing p0
 		const MoveBoard& moveboard_p0_cardside_rev = cards.moveBoardsReverse[permutation.sideCard];
 
 		for (U64 pieceIndex = 0; currentEntry < lastEntry; pieceIndex += NUM_BOARDS_PER_U64) {
 			auto& entry = *currentEntry++;
 			U64 newP1Wins = 0;
 			for (auto bits = getResolvedBits(~entry); bits; bits &= bits - 1) {
-				// if (++i >= 149035927)
-				// 	std::cout << std::endl;
 				U64 win = 0;
 				U64 bitIndex = _tzcnt_u64(bits);
 				bi.pieceIndex = pieceIndex + bitIndex;
 
 				Board board = indexToBoard<1>(bi, moveBoard_p1_card01); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
-				// if (++i >= 149035927) {
-				//  	board.print();
-				// 	std::cout << board.isWinInOne<1>(combinedOtherMoveBoard) << ' ' << cardI << ' ' << (U64)permutation.playerCards[0][0] << ' ' << (U64)permutation.playerCards[0][1] << std::endl;
-				// 	// print(combinedOtherMoveBoard);
-				// 	// print(cards.moveBoardsForward[permutation.playerCards[0][0]]);
-				// 	// print(cards.moveBoardsForward[permutation.playerCards[0][1]]);
-				// }
+
 				bool isTempleThreatened = board.isTempleKingInRange<0>(moveBoard_p0_card01_rev);
 				if (!(isTempleThreatened && board.isTempleFree<0>())) { // if p0 can just walk to temple
 					U64 kingThreatenPawns = board.isTakeWinInOne<0>(moveBoard_p0_card01_rev);
@@ -238,7 +228,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 								};
 								
 								if (targetBoard.isWinInOne<0>(moveBoard_p0_card01_rev)) { //temporary solution, not optimised (this is because some edge cases were allowed to fall trough)
-									// i++;
+									i++;
 									continue;
 								}
 
@@ -247,11 +237,11 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 								bool oneTrue = false;
 								if (landPiece & moveBoard_p1_card0_or_01[pp]) {
 									oneTrue = true;
-									if ((targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
+								if ((targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
 										goto notWin;
 								}
 								if (depth > 2 && (!oneTrue || landPiece & moveBoard_p1_card1_rev[pp]))
-									if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
+									if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
 										goto notWin;
 							}
 						}
@@ -282,12 +272,12 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 							bool oneTrue = false;
 							if (landPiece & moveBoard_p1_card0_or_01[pp]) {
 								oneTrue = true;
-								if ((targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
+								if ((targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
 									goto notWin;
 							}
 								
 							if (depth > 2 && (!oneTrue || (landPiece & moveBoard_p1_card1_rev[pp])))
-								if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
+								if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
 									goto notWin;
 						}
 					}
