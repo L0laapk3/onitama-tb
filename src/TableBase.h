@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <memory>
+#include <ostream>
 
 // the tablebase describes boards with player 0 to move.
 // if player 1 is to move, use boardToIndex<true> which flips the board.
@@ -21,6 +22,8 @@ struct TableBase {
     RefRow operator [](int i) const {
         return refTable[i];
     }
+
+	void dump(std::basic_ostream<char>& os);
 };
 
 std::unique_ptr<TableBase> generateTB(const CardsInfo& cards);

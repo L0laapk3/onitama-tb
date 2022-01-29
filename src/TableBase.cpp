@@ -16,7 +16,7 @@
 #include <x86intrin.h>
 
 
-constexpr bool STORE_WIN = true;
+constexpr bool STORE_WIN = false;
 constexpr U64 NUM_BOARDS_PER_U64 = STORE_WIN ? 32 : 64;
 template <typename T>
 constexpr auto countResolved(T& bits) {
@@ -456,4 +456,11 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 	}
 	if (mod)
 		modified = true;
+}
+
+
+
+
+void TableBase::dump(std::basic_ostream<char>& os) {
+	os.write(reinterpret_cast<char*>(mem.data()), mem.size() * sizeof(U64));
 }

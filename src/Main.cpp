@@ -2,6 +2,7 @@
 #include "TableBase.h"
 
 #include <iostream>
+#include <fstream>
 
 
 
@@ -14,7 +15,10 @@ int main(int, char**) {
     } else if (0) {
 		exhaustiveIndexTest(CARDS);
 	} else if (1) {
-        generateTB(CARDS);
+        auto tb = generateTB(CARDS);
+		std::ofstream f(TB_MEN + "men.bin", std::ios::binary);
+		tb->dump(f);
+		f.close();
     } else {
 
 		U64 smallestTB = (U64)-1, largestTB = 0;
