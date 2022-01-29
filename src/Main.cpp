@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <string>
 
 
 
@@ -14,10 +15,14 @@ int main(int, char**) {
         return 0;
     } else if (0) {
 		exhaustiveIndexTest(CARDS);
+	} else if (0) {
+        auto tb = generateTB(CARDS);
+		tb->testCompression();
 	} else if (1) {
         auto tb = generateTB(CARDS);
-		std::ofstream f(TB_MEN + "men.bin", std::ios::binary);
-		tb->dump(f);
+		auto tbBinary = tb->compress();
+		std::ofstream f(std::to_string(TB_MEN) + "men.bin", std::ios::binary);
+		f.write(reinterpret_cast<char*>(tbBinary.data()), tbBinary.size());
 		f.close();
     } else {
 

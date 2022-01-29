@@ -7,6 +7,7 @@ ${PROJECT_SOURCE_DIR}/src/Index.cpp
 ${PROJECT_SOURCE_DIR}/src/Card.cpp
 ${PROJECT_SOURCE_DIR}/src/Board.cpp
 ${PROJECT_SOURCE_DIR}/src/TableBase.cpp
+${PROJECT_SOURCE_DIR}/src/TableBaseCompress.cpp
 ${PROJECT_SOURCE_DIR}/src/Main.cpp
 )
 

@@ -437,12 +437,12 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 	
 	U64 bbk0, bbk1;
 	std::tie(bbk0, bbk1) = TABLES_BBKINGS[invert][rk];
-	U64 ik1 = invert ? _lzcnt_u64(bbk1) - 39 : _tzcnt_u64(bbk1);
+	U64 ik1 = _tzcnt_u64(bbk1);
 
 	// p0 is not allowed to have any pieces on these squares:
 	// - the squares occupied by the two kings
 	// - the squares from which p1's king can be taken
-	U64 p0CompactMask = bbk0 | bbk1 | reverseMoveBoard[invert ? 24 - ik1 : ik1];
+	U64 p0CompactMask = bbk0 | bbk1 | reverseMoveBoard[ik1];
 
 	// if p0 is threating a temple win, a pawn needs to block the temple. One pawn will be subtracted from p0,
 	// and all other pawns will not be allowed to be on the temple square, so it is added to the mask.

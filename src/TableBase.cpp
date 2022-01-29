@@ -16,27 +16,6 @@
 #include <x86intrin.h>
 
 
-constexpr bool STORE_WIN = false;
-constexpr U64 NUM_BOARDS_PER_U64 = STORE_WIN ? 32 : 64;
-template <typename T>
-constexpr auto countResolved(T& bits) {
-	return STORE_WIN ? _popcnt32(bits) : _popcnt64(bits);
-}
-constexpr auto WIN_SHIFT_BITS = [](){
-	std::array<U64, NUM_BOARDS_PER_U64> a{};
-	for (U64 i = 0; i < NUM_BOARDS_PER_U64; i++)
-		a[i] = (STORE_WIN ? 0x100000001ULL : 0x1ULL) << i;
-	return a;
-}();
-template <typename T>
-constexpr U64 getWinBits(T pos) {
-	return STORE_WIN ? WIN_SHIFT_BITS[pos] : 0x1ULL << pos;
-}
-constexpr std::conditional<STORE_WIN, U32, U64>::type getResolvedBits(U64 entry) {
-	return entry;
-}
-
-
 template<int depth>
 void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
 
@@ -44,9 +23,10 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
 	auto tb = std::make_unique<TableBase>();
 	
-	std::cout << "jump table size: " << sizeof(tb->refTable) / sizeof(void*) << " entries (" << sizeof(tb->refTable) / 1024 << "KB)" << std::endl;
+	std::cout << "jump table size: " << sizeof(TableBase::RefTable) / sizeof(void*) << " entries (" << sizeof(TableBase::RefTable) / 1024 << "KB)" << std::endl;
 
-	U64 cnt_0 = 0, totalRows = 0, totalSize = 0;
+	U64 totalRows = 0, totalSize = 0;
+	tb->cnt_0 = 0;
 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
 		auto& cardTb = (*tb)[cardI];
 		auto permutation = CARDS_PERMUTATIONS[cardI];
@@ -83,7 +63,7 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 			row[rowEntries - 1] = (NUM_BOARDS_PER_U64 < 64 ? 1ULL << NUM_BOARDS_PER_U64 : 0) - (1ULL << (((rowSize + NUM_BOARDS_PER_U64 - 1) % NUM_BOARDS_PER_U64) + 1)); // mark final rows as resolved so we dont have to worry about it
 			// if (cardI == 0 && pieceCnt_kingsIndex < 5)
 			// 	std::cout << cardI << ' ' << pieceCnt_kingsIndex << ' ' << std::hex << tbMemPtrIncr << ' ' << row[rowEntries - 1] << std::endl;
-			cnt_0 -= countResolved(row[rowEntries - 1]);
+			tb->cnt_0 -= countResolved(row[rowEntries - 1]);
 			tbMemPtrIncr += rowEntries;
 		});
 
@@ -116,7 +96,7 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
 		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
 		totalTime += time;
-		U64 cnt = cnt_0;
+		U64 cnt = tb->cnt_0;
 #ifdef COUNT_BOARDS
 		for (auto& entry : tb->mem)
 			cnt += count_resolved(entry);
@@ -133,10 +113,10 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 		depth++;
 	}
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
-	U64 cnt = cnt_0;
+	tb->cnt = tb->cnt_0;
 	for (auto& entry : tb->mem)
-		cnt += countResolved(entry);
-	printf("found %llu boards in %.3fs/%.3fs\n", cnt, totalTime, totalInclusiveTime);
+		tb->cnt += countResolved(entry);
+	printf("found %llu boards in %.3fs/%.3fs\n", tb->cnt, totalTime, totalInclusiveTime);
 
 	return tb;
 }
@@ -198,7 +178,6 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 			auto& entry = *currentEntry++;
 			U64 newP1Wins = 0;
 			for (auto bits = getResolvedBits(~entry); bits; bits &= bits - 1) {
-				U64 win = 0;
 				U64 bitIndex = _tzcnt_u64(bits);
 				bi.pieceIndex = pieceIndex + bitIndex;
 
@@ -438,7 +417,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 						}
 					}
 				}
-				win = 1;
+				// win = 1;
 				// U64 cardI=0x10 board.bbp[0]=0x1000300 board.bbp[1]=0x80410 110
 				// std::cout << std::hex << cardI << ' ' << board.bbp[0] << ' ' << board.bbp[1] << ' ' << (board.bbk[0] | board.bbk[1]) << std::endl;
 			 notWin:;
@@ -456,11 +435,4 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 	}
 	if (mod)
 		modified = true;
-}
-
-
-
-
-void TableBase::dump(std::basic_ostream<char>& os) {
-	os.write(reinterpret_cast<char*>(mem.data()), mem.size() * sizeof(U64));
 }
