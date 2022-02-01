@@ -15,6 +15,7 @@ public:
 	std::array<U64, 2> bbp;
 	std::array<U64, 2> bbk;
 
+	static U64 inline isKingAttackedBy(U64 bbk, U64 bbp, const MoveBoard& reverseMoveBoard);
 	template <bool player>
 	U64 inline isKingAttacked(U64 bbk, const MoveBoard& reverseMoveBoard);
 	template <bool player>
@@ -59,12 +60,16 @@ bool inline Board::isTempleWinInOne(const MoveBoard& reverseMoveBoard) {
 }
 
 
+U64 inline Board::isKingAttackedBy(U64 bbk, U64 bbp, const MoveBoard& reverseMoveBoard) {
+	U64 pk = _tzcnt_u64(bbk);
+	return reverseMoveBoard[pk] & bbp;
+}
+
 // is !player king safe?
 // is player attacking !players king?
 template <bool player>
 U64 inline Board::isKingAttacked(U64 bbk, const MoveBoard& reverseMoveBoard) {
-	U64 pk = _tzcnt_u64(bbk);
-	return reverseMoveBoard[pk] & bbp[player];
+	return isKingAttackedBy(bbk, bbp[player], reverseMoveBoard);
 }
 
 
