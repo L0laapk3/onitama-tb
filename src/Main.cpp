@@ -8,11 +8,15 @@
 
 
 int main(int, char**) {
-	const CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB };
+
+
+
+	const CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB }; // perft cards
+	// const CardsInfo CARDS{ CRAB, DRAGON, ELEPHANT, GOOSE, HORSE }; // smallest TB
+	// const CardsInfo CARDS{ FROG, MANTIS, MONKEY, RABBIT, TIGER }; //largest TB
 
     if (0) {
         testIndexing(CARDS);
-        return 0;
     } else if (0) {
 		exhaustiveIndexTest(CARDS);
 	} else if (0) {
@@ -35,7 +39,7 @@ int main(int, char**) {
 				const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
 
 				iterateTBCounts(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
-					totalRows += (rowSize + 31) / 32;
+					totalRows += (rowSize + NUM_BOARDS_PER_U64 - 1) / NUM_BOARDS_PER_U64;
 				});
 			}
 			if (totalRows < smallestTB) {

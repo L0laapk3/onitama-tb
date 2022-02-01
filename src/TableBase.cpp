@@ -61,8 +61,6 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 				return;
 			U64 rowEntries = (rowSize + NUM_BOARDS_PER_U64 - 1) / NUM_BOARDS_PER_U64;
 			row[rowEntries - 1] = (NUM_BOARDS_PER_U64 < 64 ? 1ULL << NUM_BOARDS_PER_U64 : 0) - (1ULL << (((rowSize + NUM_BOARDS_PER_U64 - 1) % NUM_BOARDS_PER_U64) + 1)); // mark final rows as resolved so we dont have to worry about it
-			// if (cardI == 0 && pieceCnt_kingsIndex < 5)
-			// 	std::cout << cardI << ' ' << pieceCnt_kingsIndex << ' ' << std::hex << tbMemPtrIncr << ' ' << row[rowEntries - 1] << std::endl;
 			tb->cnt_0 -= countResolved(row[rowEntries - 1]);
 			tbMemPtrIncr += rowEntries;
 		});
@@ -128,7 +126,7 @@ template<int depth>
 void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified) {
 	bool mod = false;
 	BoardIndex bi;
-	U64 i = 0;
+	// U64 i = 0;
 	U64 lastCard = -1;
 
 	MoveBoard moveBoard_p0_card01_rev, moveBoard_p1_card01_rev, moveBoard_p1_card01, moveBoard_p0_card1side_rev, moveBoard_p0_card0side_rev;
@@ -162,6 +160,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 
 		if (lastCard != invCardI) {
 			[[unlikely]]
+			// std::cout << invCardI << ' ' << (U64)CARDS_SWAP[cardI][0][0] << ' ' << (U64)CARDS_SWAP[cardI][0][1] << ' ' << (U64)CARDS_SWAP[cardI][1][0] << ' ' << (U64)CARDS_SWAP[cardI][1][1] << std::endl;
 			lastCard = invCardI;
 			moveBoard_p0_card01_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
 			moveBoard_p1_card01_rev = combineMoveBoards(moveBoard_p1_card0_rev, moveBoard_p1_card1_rev);
@@ -186,46 +185,56 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 				bool isTempleThreatened = board.isTempleKingInRange<0>(moveBoard_p0_card01_rev);
 				if (!(isTempleThreatened && board.isTempleFree<0>())) { // if p0 can just walk to temple
 					U64 kingThreatenPawns = board.isTakeWinInOne<0>(moveBoard_p0_card01_rev);
-					U64 landMaskStore = kingThreatenPawns ? kingThreatenPawns : ~board.bbp[1];
-					U64 scan = board.bbp[1] & ~board.bbk[1];
-					while (scan) {
-						U64 sourcePiece = scan & -scan;
-						U64 landMask = landMaskStore;
-						U64 bbp = board.bbp[1] - sourcePiece;
-						U64 pp = _tzcnt_u64(sourcePiece);
-						U64 land = moveBoard_p1_card01_rev[pp] & landMask;
-						if (depth == 2) {
-							if (land)
-								goto notWin;
-						} else {
-							while (land) {
-								U64 landPiece = land & -land;
-								land &= land - 1;
-								Board targetBoard{
-									.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
-									.bbk = { board.bbk[0], board.bbk[1] },
-								};
-								
-								if (targetBoard.isWinInOne<0>(moveBoard_p0_card01_rev)) { //temporary solution, not optimised (this is because some edge cases were allowed to fall trough)
-									i++;
-									continue;
-								}
-
-								auto ti = boardToIndex<false>(targetBoard, moveBoard_p0_card01_rev); // the resulting board has p0 to move and needs to be a win
+					// if (_popcnt64(kingThreatenPawns) <= 1) { // no way out when multiple king threats
+						U64 landMaskStore = kingThreatenPawns ? kingThreatenPawns : ~board.bbp[1];
+						if (isTempleThreatened)
+							landMaskStore &= ~(1ULL << PTEMPLE[0]);
+						U64 scan = board.bbp[1] & ~board.bbk[1];
+						while (scan) {
+							U64 sourcePiece = scan & -scan;
+							U64 landMask = landMaskStore;
+							U64 bbp = board.bbp[1] - sourcePiece;
+							U64 pp = _tzcnt_u64(sourcePiece);
+							U64 land = moveBoard_p1_card01_rev[pp] & landMask;
+							if (depth == 2) { // tb is empty, so any land bit will be 0
+								if (land)
+									goto notWin;
+							} else {
+								while (land) {
+									U64 landPiece = land & -land;
+									land &= land - 1;
+									Board targetBoard{
+										.bbp = { board.bbp[0] & ~landPiece, bbp | landPiece },
+										.bbk = { board.bbk[0], board.bbk[1] },
+									};
 									
-								bool oneTrue = false;
-								if (landPiece & moveBoard_p1_card0_or_01[pp]) {
-									oneTrue = true;
-								if ((targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
-										goto notWin;
+									if (targetBoard.isTakeWinInOne<0>(moveBoard_p0_card01_rev)) { //temporary solution, not optimised (this is because some edge cases were allowed to fall trough)
+										// i++;	
+										// auto cards = std::array<std::string, 5> { "CRAB", "DRAGON", "ELEPHANT", "GOOSE", "HORSE" };
+										// std::cout << std::endl << cards[permutation.playerCards[1][0]] << ' ' << cards[permutation.playerCards[1][1]] << std::endl;
+										// targetBoard.print();
+										// std::cout << cards[permutation.playerCards[0][0]] << ' ' << cards[permutation.playerCards[0][1]] << std::endl;
+										// std::cout << cards[permutation.sideCard] << std::endl;	
+										// std::cout << std::bitset<25>(kingThreatenPawns) << std::endl;							
+										continue;
+									}
+
+									auto ti = boardToIndex<false>(targetBoard, moveBoard_p0_card01_rev); // the resulting board has p0 to move and needs to be a win
+										
+									bool oneTrue = false;
+									if (landPiece & moveBoard_p1_card0_or_01[pp]) {
+										oneTrue = true;
+									if ((targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
+											goto notWin;
+									}
+									if (depth > 2 && (!oneTrue || landPiece & moveBoard_p1_card1_rev[pp]))
+										if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
+											goto notWin;
 								}
-								if (depth > 2 && (!oneTrue || landPiece & moveBoard_p1_card1_rev[pp]))
-									if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
-										goto notWin;
 							}
+							scan &= scan - 1;
 						}
-						scan &= scan - 1;
-					}
+					// }
 					{ // king move
 						U64 sourcePiece = board.bbk[1];
 						U64 landMask = ~board.bbp[1];

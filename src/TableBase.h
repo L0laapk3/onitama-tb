@@ -27,7 +27,7 @@ struct TableBase {
 	U64 cnt;
 
 	std::vector<unsigned char> compress();
-	static std::vector<U64> decompressIndices(const std::vector<unsigned char>& compressed);
+	static std::vector<U64> decompressToIndices(const std::vector<unsigned char>& compressed);
 	void testCompression();
 };
 

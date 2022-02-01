@@ -1,0 +1,3 @@
+- LZ4 the TB chunks to allow <32/<64GB ram usage
+- instead of iterating over 30 cards, iterate over the 10 combos where the two first cards are the same so u dont have to do indexToBoard over and over
+- stop the high number of win in 1's falling trough during forward board testing
