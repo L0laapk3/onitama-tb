@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.9.4)
 project(tb VERSION 0.1.0)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
@@ -19,6 +19,7 @@ target_include_directories(tb PRIVATE ${PROJECT_SOURCE_DIR}/Include)
 
 #target_include_directories(tb PUBLIC include)
 
+set_property(TARGET tb PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 set(CMAKE_CXX_FLAGS "-march=native -fconstexpr-steps=10000000")
 set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG -D_MT -Xclang --dependent-lib=msvcrt")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELEASE} -g -gcodeview -D_DLL")
