@@ -2,22 +2,18 @@ cmake_minimum_required(VERSION 3.9.4)
 project(tb VERSION 0.1.0)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
-set(source_files
-${PROJECT_SOURCE_DIR}/src/Index.cpp
-${PROJECT_SOURCE_DIR}/src/Card.cpp
-${PROJECT_SOURCE_DIR}/src/Board.cpp
-${PROJECT_SOURCE_DIR}/src/TableBase.cpp
-${PROJECT_SOURCE_DIR}/src/TableBaseCompress.cpp
-${PROJECT_SOURCE_DIR}/src/Main.cpp
-)
+file(GLOB source_files ${PROJECT_SOURCE_DIR}/src/*.cpp)
 
 set(CMAKE_CPP_COMPILER clang++)
 
 add_executable(tb ${source_files})
 target_compile_features(tb PUBLIC cxx_std_20)
-target_include_directories(tb PRIVATE ${PROJECT_SOURCE_DIR}/Include)
 
-#target_include_directories(tb PUBLIC include)
+set(LZ4_BUNDLED_MODE ON)
+set(LZ4_BUILD_CLI OFF)
+add_subdirectory(lz4/build/cmake)
+target_link_libraries(tb lz4_static)
+target_include_directories(tb PRIVATE ${PROJECT_SOURCE_DIR}/lz4/lib)
 
 set_property(TARGET tb PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 set(CMAKE_CXX_FLAGS "-march=native -fconstexpr-steps=10000000")

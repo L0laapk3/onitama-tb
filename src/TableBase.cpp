@@ -290,7 +290,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 					U64 scan = board.bbp[0] & ~board.bbk[0]; // no reverse take moves
 					while (scan) { // pawn unmoves
 						U64 sourcePiece = scan & -scan;
-						U64 bbp = board.bbp[0] - sourcePiece;
+						U64 bbp = board.bbp[0] & ~sourcePiece;
 						U64 pp = _tzcnt_u64(sourcePiece);
 						U64 land = moveboard_p0_cardside_rev[pp] & ~board.bbp[1] & ~board.bbp[0];
 						while (land) {
@@ -321,7 +321,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 					}
 					{ // king unmove
 						U64 sourcePiece = board.bbk[0];
-						U64 bbp = board.bbp[0] - sourcePiece;
+						U64 bbp = board.bbp[0] & ~sourcePiece;
 						U64 pp = _tzcnt_u64(sourcePiece);
 						U64 land = moveboard_p0_cardside_rev[pp] & ~board.bbp[1] & ~board.bbp[0] & ~(1 << PTEMPLE[0]);
 						while (land) {
@@ -355,7 +355,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 						U64 scan = board.bbp[0] & ~board.bbk[0];
 						while (scan) { // pawn unmoves
 							U64 sourcePiece = scan & -scan;
-							U64 bbp = board.bbp[0] - sourcePiece;
+							U64 bbp = board.bbp[0] & ~sourcePiece;
 							U64 bbp1 = board.bbp[1] | sourcePiece;
 							U64 pp = _tzcnt_u64(sourcePiece);
 							U64 land = moveboard_p0_cardside_rev[pp] & ~board.bbp[1] & ~board.bbp[0];
@@ -386,7 +386,7 @@ void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& ch
 						}
 						{ // king unmove
 							U64 sourcePiece = board.bbk[0];
-							U64 bbp = board.bbp[0] - sourcePiece;
+							U64 bbp = board.bbp[0] & ~sourcePiece;
 							U64 bbp1 = board.bbp[1] | sourcePiece;
 							U64 pp = _tzcnt_u64(sourcePiece);
 							U64 land = moveboard_p0_cardside_rev[pp] & ~board.bbp[1] & ~board.bbp[0] & ~(1 << PTEMPLE[0]);

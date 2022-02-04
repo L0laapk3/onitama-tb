@@ -1,5 +1,7 @@
 #include "TableBase.h"
 
+#include "lz4frame.h"
+
 
 constexpr U64 NUM_BYTES_STORED = 5;
 
@@ -24,6 +26,17 @@ std::vector<unsigned char> TableBase::compress() {
 		}
 
 	return bin;
+
+	LZ4F_preferences_t prefs {
+		.compressionLevel = 9,
+	};
+	std::vector<unsigned char> compressed(LZ4F_compressFrameBound(bin.size(), &prefs));
+	compressed.resize(LZ4F_compressFrame(
+		&compressed[0], compressed.size(),
+		&bin[0], bin.size(),
+		&prefs));
+
+	return compressed;
 }
 
 std::vector<U64> TableBase::decompressToIndices(const std::vector<unsigned char>& compressed) {

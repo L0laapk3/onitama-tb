@@ -24,10 +24,12 @@ int main(int, char**) {
 		tb->testCompression();
 	} else if (1) {
         auto tb = generateTB(CARDS);
-		auto tbBinary = tb->compress();
-		std::ofstream f(std::to_string(TB_MEN) + "men.bin", std::ios::binary);
-		f.write(reinterpret_cast<char*>(tbBinary.data()), tbBinary.size());
-		f.close();
+		if (1) {
+			auto tbBinary = tb->compress();
+			std::ofstream f(std::to_string(TB_MEN) + "men.bin", std::ios::binary);
+			f.write(reinterpret_cast<char*>(tbBinary.data()), tbBinary.size());
+			f.close();
+		}
     } else {
 
 		U64 smallestTB = (U64)-1, largestTB = 0;
