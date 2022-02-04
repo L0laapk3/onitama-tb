@@ -24,7 +24,7 @@ int main(int, char**) {
 		tb->testCompression();
 	} else if (1) {
         auto tb = generateTB(CARDS);
-		if (1) {
+		if (0) {
 			auto tbBinary = tb->compress();
 			std::ofstream f(std::to_string(TB_MEN) + "men.bin", std::ios::binary);
 			f.write(reinterpret_cast<char*>(tbBinary.data()), tbBinary.size());

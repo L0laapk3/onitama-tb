@@ -5,24 +5,41 @@
 #include "Config.h"
 #include "Card.hpp"
 
+#include <array>
+#include <vector>
 #include <atomic>
 #include <memory>
 
 // the tablebase describes boards with player 0 to move.
-// if player 1 is to move, use boardToIndex<true> which flips the board.
-struct TableBase {
-	typedef std::array<std::atomic<U64>*, PIECECOUNTMULT * KINGSMULT + 1> RefRow;
-	typedef std::array<RefRow, CARDSMULT> RefTable;
-	RefTable refTable;
+// if player 1 is to move, use boardToIndex<true> which flips the board
 
+
+class RefRowWrapper {
+public:
+	typedef std::array<U32, PIECECOUNTMULT * KINGSMULT + 1> RefRow;
+	RefRow refs;
 	std::vector<std::atomic<U64>> mem;
+	std::vector<unsigned char> memComp;
+
+	std::atomic<bool> isCompressed = false;
+	std::atomic<bool> isBusy = false;
+
+    std::atomic<U64>* operator [](int i) { return &mem.data()[refs[i]]; }
+
+	void compress();
+	void decompress();
+};
+
+void freeSpaceForRow();
+
+struct TableBase {
+	typedef std::array<RefRowWrapper, CARDSMULT> RefTable;
+	RefTable refTable;
 	
-    RefRow& operator [](int i) {
-        return refTable[i];
-    }
-    RefRow operator [](int i) const {
-        return refTable[i];
-    }
+    RefRowWrapper& operator [](int i) {
+		return refTable[i];
+	}
+
 	U64 cnt_0;
 	U64 cnt;
 

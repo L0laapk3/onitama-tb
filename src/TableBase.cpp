@@ -28,45 +28,46 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 	U64 totalRows = 0, totalSize = 0;
 	tb->cnt_0 = 0;
 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
-		auto& cardTb = (*tb)[cardI];
-		auto permutation = CARDS_PERMUTATIONS[cardI];
-		const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
-
-		iterateTBCounts(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
-			totalRows += (rowSize + NUM_BOARDS_PER_U64 - 1) / NUM_BOARDS_PER_U64;
-			totalSize += rowSize;
-		});
-	}
-	
-	std::cout << "main table size: " << totalSize << " entries (" << totalRows * sizeof(U64) / 1024 / 1024 << "MB)" << std::endl;
-	
-	try {
-		tb->mem = std::vector<std::atomic<U64>>(totalRows);
-	} catch (const std::bad_alloc& e) {
-		std::cout << e.what() << " (not enough memory?)" << std::endl;
-		throw e;
-	}
-	std::atomic<U64>* tbMemPtrIncr = tb->mem.data();
-
-	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
-		auto& cardTb = (*tb)[cardI];
+		RefRowWrapper& 
+		cardTb = (*tb)[cardI];
 		auto permutation = CARDS_PERMUTATIONS[cardI];
 		const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
 		const MoveBoard combinedOtherMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[0][0]], cards.moveBoardsForward[permutation.playerCards[0][1]]);
 
+
+		U32 rows = 0, size = 0;
 		iterateTBCounts(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
-			auto& row = cardTb[pieceCnt_kingsIndex];
-			row = tbMemPtrIncr;
+			rows += (rowSize + NUM_BOARDS_PER_U64 - 1) / NUM_BOARDS_PER_U64;
+			size += rowSize;
+		});
+
+		totalRows += rows;
+		totalSize += size;
+
+			
+		try {
+			cardTb.mem = std::vector<std::atomic<U64>>(rows);
+		} catch (const std::bad_alloc& e) {
+			std::cout << e.what() << " (not enough memory?)" << std::endl;
+			throw e;
+		}
+		U32 passedRowsCount = 0;
+		// set final bits to resolved.
+		iterateTBCounts(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
+			cardTb.refs[pieceCnt_kingsIndex] = passedRowsCount;
 			if (rowSize == 0)
 				return;
 			U64 rowEntries = (rowSize + NUM_BOARDS_PER_U64 - 1) / NUM_BOARDS_PER_U64;
-			row[rowEntries - 1] = (NUM_BOARDS_PER_U64 < 64 ? 1ULL << NUM_BOARDS_PER_U64 : 0) - (1ULL << (((rowSize + NUM_BOARDS_PER_U64 - 1) % NUM_BOARDS_PER_U64) + 1)); // mark final rows as resolved so we dont have to worry about it
-			tb->cnt_0 -= countResolved(row[rowEntries - 1]);
-			tbMemPtrIncr += rowEntries;
+			passedRowsCount += rowEntries;
+			cardTb.mem[passedRowsCount - 1] = (NUM_BOARDS_PER_U64 < 64 ? 1ULL << NUM_BOARDS_PER_U64 : 0) - (1ULL << (((rowSize + NUM_BOARDS_PER_U64 - 1) % NUM_BOARDS_PER_U64) + 1)); // mark final rows as resolved so we dont have to worry about it
+			tb->cnt_0 -= countResolved(cardTb.mem[passedRowsCount - 1]);
 		});
 
-		cardTb.back() = tbMemPtrIncr;
+		cardTb.refs.back() = passedRowsCount;
 	}
+	
+	std::cout << "main table size: " << totalSize << " entries (" << totalRows * sizeof(U64) / 1024 / 1024 << "MB)" << std::endl;
+
 
 	U64 numThreads = std::clamp<U64>(std::thread::hardware_concurrency(), 1, 1024);
 	std::vector<std::thread> threads(numThreads);
@@ -112,8 +113,11 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 	}
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
 	tb->cnt = tb->cnt_0;
-	for (auto& entry : tb->mem)
-		tb->cnt += countResolved(entry);
+	for (auto& row : tb->refTable) {
+		row.decompress();
+		for (auto& entry : row.mem)
+			tb->cnt += countResolved(entry);
+	}
 	printf("found %llu boards in %.3fs/%.3fs\n", tb->cnt, totalTime, totalInclusiveTime);
 
 	return tb;
