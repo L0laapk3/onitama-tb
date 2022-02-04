@@ -13,8 +13,8 @@ void RefRowWrapper::compress() {
 	isBusy = true;
 	memComp = std::vector<unsigned char>(LZ4F_compressFrameBound(sizeof(U64) * refs.back(), &LZ4Prefs));
 	memComp.resize(LZ4F_compressFrame(
-		memComp.data(), memComp.size(),
-		mem.data(), mem.size(),
+		memComp.data(), memComp.size() * sizeof(char),
+		mem.data(), mem.size() * sizeof(U64),
 		&LZ4Prefs));
 
 	isCompressed = true;
@@ -30,8 +30,8 @@ void RefRowWrapper::decompress() {
 
 	LZ4F_decompressionContext_t ctx;
 	LZ4F_createDecompressionContext(&ctx, LZ4F_VERSION);
-	size_t decompressedSize = refs.back();
-	size_t compressedSize = memComp.size();
+	size_t decompressedSize = refs.back() * sizeof(U64);
+	size_t compressedSize = memComp.size() * sizeof(char);
 	
 	mem = std::vector<std::atomic<U64>>(decompressedSize);
 

@@ -64,6 +64,9 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 		});
 
 		cardTb.refs.back() = passedRowsCount;
+
+		cardTb.compress();
+		cardTb.decompress();
 	}
 	
 	std::cout << "main table size: " << totalSize << " entries (" << totalRows * sizeof(U64) / 1024 / 1024 << "MB)" << std::endl;
