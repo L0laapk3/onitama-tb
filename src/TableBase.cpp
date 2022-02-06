@@ -18,6 +18,37 @@
 
 template<int depth>
 void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
+void singleThread(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified, std::atomic<U64>& threadsDone, std::atomic<U64>& threadsStart) {
+	U64 depth = 2;
+
+	singleDepthPass<2>(cards, tb, chunkCounter, modified);
+
+	while (true) {
+		threadsDone++; // mark that it is done
+		threadsDone.notify_all();
+		while (true) {
+			U64 threadsDoneRead = threadsDone;
+			if (threadsDoneRead == 0) // wait for done to be cleared
+				break;
+			threadsDone.wait(threadsDoneRead);
+		}
+		
+		while (true) {
+			U64 threadsStartRead = threadsStart;
+			if (threadsStartRead == -1ULL) // wait for tb is finished
+				return;
+			if (threadsStartRead != 0) // wait for next tb iteration
+				break;
+			threadsStart.wait(threadsStartRead);
+		}
+		threadsStart--;	// clear that finish registered
+		threadsStart.notify_all();
+
+		depth++;
+		singleDepthPass<3>(cards, tb, chunkCounter, modified);
+	}
+}
+
 
 std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
@@ -75,22 +106,21 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 	U64 totalBoards = 0;
 	float totalTime = 0;
 	auto beginLoopTime = std::chrono::steady_clock::now();
+	auto beginTime = beginLoopTime;
+	bool modified = false;
+	std::atomic<U64> chunkCounter = 0;
+	std::atomic<U64> threadsDone = 0, threadsStart = 0;
+	for (U64 i = 0; i < numThreads; i++)
+		threads[i] = std::thread(&singleThread, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified), std::ref(threadsDone), std::ref(threadsStart));
+
 	while (true) {
-		auto beginTime = std::chrono::steady_clock::now();
-
-		bool modified = false;
-		std::atomic<U64> chunkCounter = 0;
-
-		void (*targetFn)(const CardsInfo&, TableBase&, std::atomic<U64>&, bool&);
-		if (depth == 2) targetFn = &singleDepthPass<2>;
-		// else if (depth == 3) targetFn = &singleDepthPass<3>;
-		else            targetFn = &singleDepthPass<3>;
-
-		for (U64 i = 0; i < numThreads; i++)
-			threads[i] = std::thread(targetFn, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified));
-		for (auto& thread : threads)
-			thread.join();
 		//numThreads = 1;
+		while (true) {
+			U64 threadsDoneRead = threadsDone;
+			if (threadsDoneRead == numThreads)
+				break;
+			threadsDone.wait(threadsDoneRead);
+		}
 
 		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
 		totalTime += time;
@@ -101,15 +131,40 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 		cnt -= totalBoards;
 		totalBoards += cnt;
 #endif
-		if (!modified)
+		if (!modified) {
+			threadsDone = 0; // notify next iteration
+			threadsDone.notify_all();
+			threadsStart = -1ULL; // notify tb is finished
+			threadsStart.notify_all();
 			break;
+		}
 #ifdef COUNT_BOARDS
 			printf("iter %3llu: %11llu boards in %.3fs\n", depth, cnt, time);
 #else
 			printf("iter %3llu in %.3fs\n", depth, time);
 #endif
 		depth++;
+
+		modified = false;
+		chunkCounter = 0;
+		threadsDone = 0; // notify next iteration
+		threadsDone.notify_all();
+		threadsStart = numThreads;
+		threadsStart.notify_all();
+		
+		beginTime = std::chrono::steady_clock::now();
+
+		while (true) {
+			U64 threadsStartRead = threadsStart;
+			if (threadsStartRead == 0)
+				break;
+			threadsStart.wait(threadsStartRead);
+		}
 	}
+
+	for (auto& thread : threads)
+		thread.join();
+
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
 	tb->cnt = tb->cnt_0;
 	for (auto& entry : tb->mem)
