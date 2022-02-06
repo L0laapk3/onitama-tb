@@ -17,7 +17,7 @@
 
 
 template<int depth>
-void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
+void singleDepthPass(const CardsInfo& cards, U16 cardI, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
 
 std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
@@ -66,7 +66,6 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 		cardTb.refs.back() = passedRowsCount;
 
 		cardTb.compress();
-		cardTb.decompress();
 	}
 	
 	std::cout << "main table size: " << totalSize << " entries (" << totalRows * sizeof(U64) / 1024 / 1024 << "MB)" << std::endl;
@@ -83,17 +82,34 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 		auto beginTime = std::chrono::steady_clock::now();
 
 		bool modified = false;
-		std::atomic<U64> chunkCounter = 0;
 
-		void (*targetFn)(const CardsInfo&, TableBase&, std::atomic<U64>&, bool&);
+		void (*targetFn)(const CardsInfo&, U16, TableBase&, std::atomic<U64>&, bool&);
 		if (depth == 2) targetFn = &singleDepthPass<2>;
 		// else if (depth == 3) targetFn = &singleDepthPass<3>;
 		else            targetFn = &singleDepthPass<3>;
 
-		for (U64 i = 0; i < numThreads; i++)
-			threads[i] = std::thread(targetFn, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified));
-		for (auto& thread : threads)
-			thread.join();
+		for (U16 invCardI = 0; invCardI < CARDSMULT; invCardI++) {
+			// std::cout << depth << ' ' << invCardI << std::endl;
+			U64 cardI = CARDS_INVERT[invCardI];
+
+			(*tb)[invCardI].decompress();
+			(*tb)[CARDS_SWAP[cardI][1][0]].decompress();
+			(*tb)[CARDS_SWAP[cardI][1][1]].decompress();
+			(*tb)[CARDS_SWAP[cardI][0][0]].decompress();
+			(*tb)[CARDS_SWAP[cardI][0][1]].decompress();
+			
+			std::atomic<U64> chunkCounter = 0;
+			for (U64 i = 0; i < numThreads; i++)
+				threads[i] = std::thread(targetFn, std::cref(cards), invCardI, std::ref(*tb), std::ref(chunkCounter), std::ref(modified));
+			for (auto& thread : threads)
+				thread.join();
+				
+			(*tb)[invCardI].compress();
+			(*tb)[CARDS_SWAP[cardI][1][0]].compress();
+			(*tb)[CARDS_SWAP[cardI][1][1]].compress();
+			(*tb)[CARDS_SWAP[cardI][0][0]].compress();
+			(*tb)[CARDS_SWAP[cardI][0][1]].compress();
+		}
 		//numThreads = 1;
 
 		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
@@ -120,6 +136,7 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 		row.decompress();
 		for (auto& entry : row.mem)
 			tb->cnt += countResolved(entry);
+		row.compress();
 	}
 	printf("found %llu boards in %.3fs/%.3fs\n", tb->cnt, totalTime, totalInclusiveTime);
 
@@ -130,55 +147,46 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
 // iterate over unresolved states to find p0 wins with p1 to move. Check if all possible p1 moves result in wins for p0.
 template<int depth>
-void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified) {
+void singleDepthPass(const CardsInfo& cards, U16 invCardI, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified) {
 	bool mod = false;
 	BoardIndex bi;
 	// U64 i = 0;
-	U64 lastCard = -1;
 
-	MoveBoard moveBoard_p0_card01_rev, moveBoard_p1_card01_rev, moveBoard_p1_card01, moveBoard_p0_card1side_rev, moveBoard_p0_card0side_rev;
+	
+	U64 cardI = CARDS_INVERT[invCardI];
+
+	auto& cardTb = tb[invCardI];
+	auto& targetRow0 = tb[CARDS_SWAP[cardI][1][0]];
+	auto& targetRow1 = tb[CARDS_SWAP[cardI][1][1]];
+	auto& p0ReverseTargetRow0 = tb[CARDS_SWAP[cardI][0][0]];
+	auto& p0ReverseTargetRow1 = tb[CARDS_SWAP[cardI][0][1]];
+	auto permutation = CARDS_PERMUTATIONS[cardI];
+	
+	const MoveBoard& moveBoard_p1_card0_rev = cards.moveBoardsReverse[permutation.playerCards[1][0]];
+	const MoveBoard& moveBoard_p1_card1_rev = cards.moveBoardsReverse[permutation.playerCards[1][1]];
+	
+	const MoveBoard moveBoard_p0_card01_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
+	const MoveBoard moveBoard_p1_card01_rev = combineMoveBoards(moveBoard_p1_card0_rev, moveBoard_p1_card1_rev);
+	const MoveBoard moveBoard_p1_card01 = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[1][0]], cards.moveBoardsForward[permutation.playerCards[1][1]]);
+	const MoveBoard moveBoard_p0_card1side_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
+	const MoveBoard moveBoard_p0_card0side_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][0]]);
+
+	const MoveBoard& moveBoard_p1_card0_or_01 = depth > 2 ? moveBoard_p1_card0_rev : moveBoard_p1_card01_rev;
+
+	const MoveBoard& moveboard_p0_cardside_rev = cards.moveBoardsReverse[permutation.sideCard];
 
 	while (true) {
-		U64 work = chunkCounter++;
-		if (work >= PIECECOUNTMULT * KINGSMULT * CARDSMULT) {
+		bi.pieceCnt_kingsIndex = chunkCounter++;
+		if (bi.pieceCnt_kingsIndex >= PIECECOUNTMULT * KINGSMULT) {
+			[[unlikely]]
 			// std::cout << i << std::endl;
 			break;
 		}
-		bi.pieceCnt_kingsIndex = work % (PIECECOUNTMULT * KINGSMULT);
-		
-		U64 invCardI = work / (PIECECOUNTMULT * KINGSMULT);
-		auto& cardTb = tb[invCardI];
 
 		std::atomic<U64>* currentEntry = cardTb[bi.pieceCnt_kingsIndex];
 		std::atomic<U64>* lastEntry = cardTb[bi.pieceCnt_kingsIndex + 1];
 		if (currentEntry == lastEntry)
 			continue;
-
-		U64 cardI = CARDS_INVERT[invCardI];
-
-		auto& targetRow0 = tb[CARDS_SWAP[cardI][1][0]];
-		auto& targetRow1 = tb[CARDS_SWAP[cardI][1][1]];
-		auto& p0ReverseTargetRow0 = tb[CARDS_SWAP[cardI][0][0]];
-		auto& p0ReverseTargetRow1 = tb[CARDS_SWAP[cardI][0][1]];
-		auto permutation = CARDS_PERMUTATIONS[cardI];
-		
-		const MoveBoard& moveBoard_p1_card0_rev = cards.moveBoardsReverse[permutation.playerCards[1][0]];
-		const MoveBoard& moveBoard_p1_card1_rev = cards.moveBoardsReverse[permutation.playerCards[1][1]];
-
-		if (lastCard != invCardI) {
-			[[unlikely]]
-			// std::cout << invCardI << ' ' << (U64)CARDS_SWAP[cardI][0][0] << ' ' << (U64)CARDS_SWAP[cardI][0][1] << ' ' << (U64)CARDS_SWAP[cardI][1][0] << ' ' << (U64)CARDS_SWAP[cardI][1][1] << std::endl;
-			lastCard = invCardI;
-			moveBoard_p0_card01_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
-			moveBoard_p1_card01_rev = combineMoveBoards(moveBoard_p1_card0_rev, moveBoard_p1_card1_rev);
-			moveBoard_p1_card01 = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[1][0]], cards.moveBoardsForward[permutation.playerCards[1][1]]);
-			moveBoard_p0_card1side_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
-			moveBoard_p0_card0side_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.sideCard], cards.moveBoardsReverse[permutation.playerCards[0][0]]);
-		}
-
-		const MoveBoard& moveBoard_p1_card0_or_01 = depth > 2 ? moveBoard_p1_card0_rev : moveBoard_p1_card01_rev;
-
-		const MoveBoard& moveboard_p0_cardside_rev = cards.moveBoardsReverse[permutation.sideCard];
 
 		for (U64 pieceIndex = 0; currentEntry < lastEntry; pieceIndex += NUM_BOARDS_PER_U64) {
 			auto& entry = *currentEntry++;

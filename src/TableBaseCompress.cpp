@@ -11,11 +11,18 @@ constexpr LZ4F_preferences_t LZ4Prefs {
 void RefRowWrapper::compress() {
 	assert(!isCompressed);
 	isBusy = true;
-	memComp = std::vector<unsigned char>(LZ4F_compressFrameBound(sizeof(U64) * refs.back(), &LZ4Prefs));
-	memComp.resize(LZ4F_compressFrame(
+	memComp = std::vector<unsigned char>(LZ4F_compressFrameBound(mem.size() * sizeof(U64), &LZ4Prefs));
+
+	size_t compressedSize = LZ4F_compressFrame(
 		memComp.data(), memComp.size() * sizeof(char),
 		mem.data(), mem.size() * sizeof(U64),
-		&LZ4Prefs));
+		&LZ4Prefs);
+	// std::cout << memComp.size() << ' ' << compressedSize << std::endl;
+	if (LZ4F_isError(compressedSize)) {
+		std::cerr << "LZ4F_compressFrame failed: " << LZ4F_getErrorName(compressedSize) << std::endl;
+		exit(1);
+	}
+	memComp.resize(compressedSize);
 
 	isCompressed = true;
 	mem.~vector<std::atomic<U64>>();
@@ -25,20 +32,35 @@ void RefRowWrapper::compress() {
 void RefRowWrapper::decompress() {
 	if (!isCompressed)
 		return;
+		
+
+	LZ4F_decompressionContext_t ctx;
+	auto error = LZ4F_createDecompressionContext(&ctx, LZ4F_VERSION);
+	if (error) {
+		std::cerr << "LZ4F_createDecompressionContext failed: " << LZ4F_getErrorName(error) << std::endl;
+		exit(1);
+	}
 
 	isBusy = true;
 
-	LZ4F_decompressionContext_t ctx;
-	LZ4F_createDecompressionContext(&ctx, LZ4F_VERSION);
-	size_t decompressedSize = refs.back() * sizeof(U64);
-	size_t compressedSize = memComp.size() * sizeof(char);
+	size_t outBuf = refs.back() * sizeof(U64);
+	size_t inBuf = memComp.size() * sizeof(char);
 	
-	mem = std::vector<std::atomic<U64>>(decompressedSize);
+	mem = std::vector<std::atomic<U64>>(outBuf);
 
-	while(LZ4F_decompress(ctx,
-		mem.data(), &decompressedSize,
-		memComp.data(), &compressedSize,
-		nullptr));
+	std::atomic<U64>* dstPtr = mem.data();
+	unsigned char* srcPtr = memComp.data();
+
+	size_t result = LZ4F_decompress(ctx,
+		dstPtr, &outBuf,
+		srcPtr, &inBuf,
+		nullptr);
+	if (LZ4F_isError(result)) {
+		std::cerr << "LZ4F_decompress failed: " << LZ4F_getErrorName(result) << std::endl;
+		exit(1);
+	}
+
+	LZ4F_freeDecompressionContext(ctx);
 
 	isCompressed = false;
 	memComp.~vector<unsigned char>();
