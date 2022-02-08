@@ -20,7 +20,6 @@ template<int depth>
 void singleDepthPass(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
 void singleThread(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified, std::atomic<U64>& threadsDone, std::atomic<U64>& threadsStart) {
 	U64 depth = 2;
-
 	singleDepthPass<2>(cards, tb, chunkCounter, modified);
 
 	while (true) {
@@ -28,6 +27,8 @@ void singleThread(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunk
 		threadsDone.notify_all();
 		while (true) {
 			U64 threadsDoneRead = threadsDone;
+			if (threadsDoneRead == -1ULL) // wait for tb is finished
+				return;
 			if (threadsDoneRead == 0) // wait for done to be cleared
 				break;
 			threadsDone.wait(threadsDoneRead);
@@ -35,8 +36,6 @@ void singleThread(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunk
 		
 		while (true) {
 			U64 threadsStartRead = threadsStart;
-			if (threadsStartRead == -1ULL) // wait for tb is finished
-				return;
 			if (threadsStartRead != 0) // wait for next tb iteration
 				break;
 			threadsStart.wait(threadsStartRead);
@@ -132,10 +131,8 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 		totalBoards += cnt;
 #endif
 		if (!modified) {
-			threadsDone = 0; // notify next iteration
+			threadsDone = -1ULL; // notify tb is finished
 			threadsDone.notify_all();
-			threadsStart = -1ULL; // notify tb is finished
-			threadsStart.notify_all();
 			break;
 		}
 #ifdef COUNT_BOARDS
