@@ -14,6 +14,7 @@
 // if player 1 is to move, use boardToIndex<true> which flips the board
 
 
+struct TableBase;
 class RefRowWrapper {
 public:
 	typedef std::array<U32, PIECECOUNTMULT * KINGSMULT + 1> RefRow;
@@ -21,16 +22,16 @@ public:
 	std::vector<std::atomic<U64>> mem;
 	std::vector<unsigned char> memComp;
 
-	std::atomic<bool> isCompressed = false;
+	std::atomic<bool> isCompressed = true;
 	std::atomic<bool> isBusy = false;
 
     std::atomic<U64>* operator [](int i) { return &mem.data()[refs[i]]; }
 
 	void compress();
-	void decompress();
+	void decompress(TableBase& tb, U16 cardI);
+	void allocateDecompressed(U64 size, TableBase& tb, U16 cardI);
 };
-
-void freeSpaceForRow();
+extern U64 totalDecompressions;
 
 struct TableBase {
 	typedef std::array<RefRowWrapper, CARDSMULT> RefTable;
@@ -43,9 +44,9 @@ struct TableBase {
 	U64 cnt_0;
 	U64 cnt;
 
-	std::vector<unsigned char> compress();
-	static std::vector<U64> decompressToIndices(const std::vector<unsigned char>& compressed);
-	void testCompression();
+	// std::vector<unsigned char> compress();
+	// static std::vector<U64> decompressToIndices(const std::vector<unsigned char>& compressed);
+	// void testCompression();
 };
 
 std::unique_ptr<TableBase> generateTB(const CardsInfo& cards);

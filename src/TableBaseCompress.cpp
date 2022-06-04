@@ -29,10 +29,12 @@ void RefRowWrapper::compress() {
 	isBusy = false;
 }
 
-void RefRowWrapper::decompress() {
-	if (!isCompressed)
+
+U64 totalDecompressions = 0;
+
+void RefRowWrapper::decompress(TableBase& tb, U16 cardI) {
+	if(!isCompressed)
 		return;
-		
 
 	LZ4F_decompressionContext_t ctx;
 	auto error = LZ4F_createDecompressionContext(&ctx, LZ4F_VERSION);
@@ -46,7 +48,7 @@ void RefRowWrapper::decompress() {
 	size_t outBuf = refs.back() * sizeof(U64);
 	size_t inBuf = memComp.size() * sizeof(char);
 	
-	mem = std::vector<std::atomic<U64>>(outBuf);
+	allocateDecompressed(outBuf, tb, cardI);
 
 	std::atomic<U64>* dstPtr = mem.data();
 	unsigned char* srcPtr = memComp.data();
@@ -65,12 +67,49 @@ void RefRowWrapper::decompress() {
 	isCompressed = false;
 	memComp.~vector<unsigned char>();
 	isBusy = false;
+
+	totalDecompressions++;
 }
 
-// void freeSpaceForRow() {
-// 	// todo: check if required
-	
-// }
+
+constexpr U64 MAX_ROWS_ALLOCATED = 10;
+U64 numItemsAllocated = 0;
+void RefRowWrapper::allocateDecompressed(U64 size, TableBase& tb, U16 currentCardI) {
+	if (numItemsAllocated >= MAX_ROWS_ALLOCATED) {
+		// find uncompressed row that will be used last
+		RefRowWrapper* longestUnusedRow = nullptr;
+		U16 longestWithoutUsage = 0;
+		U16 longestUnusedRowI = -1;
+		for (U64 rowI = 0; rowI < CARDSMULT; rowI++) {
+			auto& row = tb.refTable[rowI];
+			if (row.isCompressed)
+				continue;
+			for (U16 i = 0; i < CARDSMULT; i++) {
+				U16 cardI = (currentCardI + i) % CARDSMULT;
+				U64 invCardI = CARDS_INVERT[cardI];
+				if (rowI == cardI ||
+					rowI == CARDS_SWAP[invCardI][1][0] ||
+					rowI == CARDS_SWAP[invCardI][1][1] ||
+					rowI == CARDS_SWAP[invCardI][0][0] ||
+					rowI == CARDS_SWAP[invCardI][0][1]) {
+					if (i > longestWithoutUsage) {
+						longestUnusedRow = &row;
+						longestWithoutUsage = i;
+						longestUnusedRowI = rowI;
+					}
+					break;
+				}
+			}
+		}
+		// std::cout << currentCardI << '\t' << longestWithoutUsage << '\t' << longestUnusedRowI << std::endl;
+		assert(longestUnusedRow);
+		assert(longestUnusedRow != this);
+		longestUnusedRow->compress();
+	} else
+		numItemsAllocated++;
+
+	mem = std::vector<std::atomic<U64>>(size);
+}
 
 
 
@@ -80,9 +119,7 @@ void RefRowWrapper::decompress() {
 
 
 
-
-
-constexpr U64 NUM_BYTES_STORED = 5;
+// constexpr U64 NUM_BYTES_STORED = 5;
 
 
 // std::vector<unsigned char> TableBase::compress() {

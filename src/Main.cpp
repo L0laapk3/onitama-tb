@@ -21,14 +21,14 @@ int main(int, char**) {
 		exhaustiveIndexTest(CARDS);
 	} else if (0) {
         auto tb = generateTB(CARDS);
-		tb->testCompression();
+		// tb->testCompression();
 	} else if (1) {
         auto tb = generateTB(CARDS);
 		if (0) {
-			auto tbBinary = tb->compress();
-			std::ofstream f(std::to_string(TB_MEN) + "men.bin", std::ios::binary);
-			f.write(reinterpret_cast<char*>(tbBinary.data()), tbBinary.size());
-			f.close();
+			// auto tbBinary = tb->compress();
+			// std::ofstream f(std::to_string(TB_MEN) + "men.bin", std::ios::binary);
+			// f.write(reinterpret_cast<char*>(tbBinary.data()), tbBinary.size());
+			// f.close();
 		}
     } else {
 

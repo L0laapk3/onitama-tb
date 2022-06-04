@@ -30,9 +30,8 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
 	U64 totalRows = 0, totalSize = 0;
 	tb->cnt_0 = 0;
-	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
-		RefRowWrapper& 
-		cardTb = (*tb)[cardI];
+	for (U64 cardI = CARDSMULT; cardI--> 0; ) {
+		RefRowWrapper& cardTb = (*tb)[cardI];
 		auto permutation = CARDS_PERMUTATIONS[cardI];
 		const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
 		const MoveBoard combinedOtherMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[0][0]], cards.moveBoardsForward[permutation.playerCards[0][1]]);
@@ -49,7 +48,8 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
 			
 		try {
-			cardTb.mem = std::vector<std::atomic<U64>>(rows);
+			cardTb.allocateDecompressed(rows, *tb, cardI);
+			cardTb.isCompressed = false;
 		} catch (const std::bad_alloc& e) {
 			std::cout << e.what() << " (not enough memory?)" << std::endl;
 			throw e;
@@ -95,11 +95,20 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 			// std::cout << depth << ' ' << invCardI << std::endl;
 			U64 cardI = CARDS_INVERT[invCardI];
 
-			// (*tb)[invCardI].decompress();
-			// (*tb)[CARDS_SWAP[cardI][1][0]].decompress();
-			// (*tb)[CARDS_SWAP[cardI][1][1]].decompress();
-			// (*tb)[CARDS_SWAP[cardI][0][0]].decompress();
-			// (*tb)[CARDS_SWAP[cardI][0][1]].decompress();
+			(*tb)[invCardI].decompress(*tb, invCardI);
+			(*tb)[CARDS_SWAP[cardI][1][0]].decompress(*tb, invCardI);
+			(*tb)[CARDS_SWAP[cardI][1][1]].decompress(*tb, invCardI);
+			(*tb)[CARDS_SWAP[cardI][0][0]].decompress(*tb, invCardI);
+			(*tb)[CARDS_SWAP[cardI][0][1]].decompress(*tb, invCardI);
+
+			assert(!(*tb)[invCardI].isCompressed);
+			assert(!(*tb)[CARDS_SWAP[cardI][1][0]].isCompressed);
+			assert(!(*tb)[CARDS_SWAP[cardI][1][1]].isCompressed);
+			assert(!(*tb)[CARDS_SWAP[cardI][0][0]].isCompressed);
+			assert(!(*tb)[CARDS_SWAP[cardI][0][1]].isCompressed);
+
+
+			// std::cout << (U64)invCardI << ' ' << (U64)CARDS_SWAP[cardI][1][0] << ' ' << (U64)CARDS_SWAP[cardI][1][1] << ' ' << (U64)CARDS_SWAP[cardI][0][0] << ' ' << (U64)CARDS_SWAP[cardI][0][1] << std::endl;
 			
 			std::atomic<U64> chunkCounter = 0;
 			for (U64 i = 0; i < numThreads; i++)
@@ -110,7 +119,7 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 			// (*tb)[invCardI].compress();
 			// (*tb)[CARDS_SWAP[cardI][1][0]].compress();
 			// (*tb)[CARDS_SWAP[cardI][1][1]].compress();
-			// (*tb)[CARDS_SWAP[cardI][0][0]].     ();
+			// (*tb)[CARDS_SWAP[cardI][0][0]].compress();
 			// (*tb)[CARDS_SWAP[cardI][0][1]].compress();
 		}
 		//numThreads = 1;
@@ -135,13 +144,17 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 	}
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
 	tb->cnt = tb->cnt_0;
-	for (auto& row : tb->refTable) {
-		// row.decompress();
+	for (U64 i = CARDSMULT; i--> 0; ) {
+		auto& row = tb->refTable[i];
+		row.decompress(*tb, i);
 		for (auto& entry : row.mem)
 			tb->cnt += countResolved(entry);
 		// row.compress();
 	}
 	printf("found %llu boards in %.3fs/%.3fs\n", tb->cnt, totalTime, totalInclusiveTime);
+
+	
+	std::cout << "decompressed a row " << totalDecompressions << " times" << std::endl;
 
 	return tb;
 }
