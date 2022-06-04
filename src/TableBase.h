@@ -32,6 +32,7 @@ public:
 	void allocateDecompressed(U64 size, TableBase& tb, U16 cardI);
 };
 extern U64 totalDecompressions;
+extern U64 totalLoads;
 
 struct TableBase {
 	typedef std::array<RefRowWrapper, CARDSMULT> RefTable;

@@ -17,7 +17,7 @@
 
 
 
-constexpr U64 CHUNK_SIZE = 9; // a divisor of PIECECOUNTMULT * KINGSMULT (4977) is used
+constexpr U64 CHUNK_SIZE = PIECECOUNTMULT; // a divisor of PIECECOUNTMULT * KINGSMULT is used
 
 template<int depth>
 void singleDepthPass(const CardsInfo& cards, U16 cardI, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
@@ -26,7 +26,7 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
 	auto tb = std::make_unique<TableBase>();
 
-	tb->memory_remaining = 100'000'000;
+	tb->memory_remaining = 20'000'000;
 	
 	std::cout << "jump table size: " << sizeof(TableBase::RefTable) / sizeof(void*) << " entries (" << sizeof(TableBase::RefTable) / 1024 << "KB)" << std::endl;
 
@@ -69,8 +69,6 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 		});
 
 		cardTb.refs.back() = passedRowsCount;
-
-		// cardTb.compress();
 	}
 	
 	std::cout << "main table size: " << totalSize << " entries (" << totalRows * sizeof(U64) / 1024 / 1024 << "MB)" << std::endl;
@@ -156,7 +154,7 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 	printf("found %llu boards in %.3fs/%.3fs\n", tb->cnt, totalTime, totalInclusiveTime);
 
 	
-	std::cout << "decompressed a row " << totalDecompressions << " times" << std::endl;
+	std::cout << "decompressed " << totalDecompressions << " rows out of " << totalLoads << " loads" << std::endl;
 
 	return tb;
 }
