@@ -8,9 +8,10 @@ constexpr LZ4F_preferences_t LZ4Prefs {
 	.compressionLevel = 0,
 };
 
-void RefRowWrapper::compress() {
+void RefRowWrapper::compress(TableBase& tb) {
 	assert(!isCompressed);
 	isBusy = true;
+	tb.memory_remaining -= memComp.size() * sizeof(unsigned char);
 	memComp = std::vector<unsigned char>(LZ4F_compressFrameBound(mem.size() * sizeof(U64), &LZ4Prefs));
 
 	size_t compressedSize = LZ4F_compressFrame(
@@ -26,6 +27,7 @@ void RefRowWrapper::compress() {
 
 	isCompressed = true;
 	mem.~vector<std::atomic<U64>>();
+	tb.memory_remaining += mem.size() * sizeof(U64);
 	isBusy = false;
 }
 
@@ -66,20 +68,21 @@ void RefRowWrapper::decompress(TableBase& tb, U16 cardI) {
 
 	isCompressed = false;
 	memComp.~vector<unsigned char>();
+	tb.memory_remaining += memComp.size() * sizeof(unsigned char);
 	isBusy = false;
 
 	totalDecompressions++;
 }
 
 
-constexpr U64 MAX_ROWS_ALLOCATED = 10;
 U64 numItemsAllocated = 0;
 void RefRowWrapper::allocateDecompressed(U64 size, TableBase& tb, U16 currentCardI) {
-	if (numItemsAllocated >= MAX_ROWS_ALLOCATED) {
+	tb.memory_remaining -= size * sizeof(U64);
+	if (tb.memory_remaining < 0) {
 		// find uncompressed row that will be used last
 		RefRowWrapper* longestUnusedRow = nullptr;
+		U64 longestUnusedRowSize = 0;
 		U16 longestWithoutUsage = 0;
-		U16 longestUnusedRowI = -1;
 		for (U64 rowI = 0; rowI < CARDSMULT; rowI++) {
 			auto& row = tb.refTable[rowI];
 			if (row.isCompressed)
@@ -95,16 +98,16 @@ void RefRowWrapper::allocateDecompressed(U64 size, TableBase& tb, U16 currentCar
 					if (i > longestWithoutUsage) {
 						longestUnusedRow = &row;
 						longestWithoutUsage = i;
-						longestUnusedRowI = rowI;
 					}
 					break;
 				}
 			}
 		}
-		// std::cout << currentCardI << '\t' << longestWithoutUsage << '\t' << longestUnusedRowI << std::endl;
-		assert(longestUnusedRow);
-		assert(longestUnusedRow != this);
-		longestUnusedRow->compress();
+						
+		if (longestWithoutUsage == 0)
+			throw std::runtime_error("Not enough memory");
+
+		longestUnusedRow->compress(tb);
 	} else
 		numItemsAllocated++;
 

@@ -27,7 +27,7 @@ public:
 
     std::atomic<U64>* operator [](int i) { return &mem.data()[refs[i]]; }
 
-	void compress();
+	void compress(TableBase& tb);
 	void decompress(TableBase& tb, U16 cardI);
 	void allocateDecompressed(U64 size, TableBase& tb, U16 cardI);
 };
@@ -43,6 +43,8 @@ struct TableBase {
 
 	U64 cnt_0;
 	U64 cnt;
+
+	std::atomic<long long> memory_remaining;
 
 	// std::vector<unsigned char> compress();
 	// static std::vector<U64> decompressToIndices(const std::vector<unsigned char>& compressed);

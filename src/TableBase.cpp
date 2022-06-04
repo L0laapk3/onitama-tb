@@ -25,6 +25,8 @@ void singleDepthPass(const CardsInfo& cards, U16 cardI, TableBase& tb, std::atom
 std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
 	auto tb = std::make_unique<TableBase>();
+
+	tb->memory_remaining = 100'000'000;
 	
 	std::cout << "jump table size: " << sizeof(TableBase::RefTable) / sizeof(void*) << " entries (" << sizeof(TableBase::RefTable) / 1024 << "KB)" << std::endl;
 
