@@ -20,7 +20,7 @@ int main(int, char**) {
     } else if (0) {
 		exhaustiveIndexTest(CARDS);
 	} else if (1) {
-        auto tb = generateTB<8, false>(CARDS);
+        auto tb = generateTB<6, false>(CARDS);
 		// tb->testCompression();
 		if (0) {
 			// auto tbBinary = tb->compress();

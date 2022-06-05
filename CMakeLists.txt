@@ -16,7 +16,7 @@ target_link_libraries(tb lz4_static)
 target_include_directories(tb PRIVATE ${PROJECT_SOURCE_DIR}/lz4/lib)
 
 set_property(TARGET tb PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-set(CMAKE_CXX_FLAGS "-march=native -fconstexpr-steps=10000000")
+set(CMAKE_CXX_FLAGS "-march=native -fconstexpr-steps=10000000 -Wno-microsoft-template")
 set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG -D_MT -Xclang --dependent-lib=msvcrt")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELEASE} -g -gcodeview -D_DLL")
 

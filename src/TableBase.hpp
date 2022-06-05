@@ -65,7 +65,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 
 	tb->memory_remaining = 1'000'000'000;
 	
-	std::cout << "jump table size: " << sizeof(TableBase<TB_MEN, STORE_WIN>::RefTable) / sizeof(void*) << " entries (" << sizeof(TableBase<TB_MEN, STORE_WIN>::RefTable) / 1024 << "KB)" << std::endl;
+	std::cout << "jump table size: " << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / sizeof(void*) << " entries (" << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / 1024 << "KB)" << std::endl;
 
 	U64 totalRows = 0, totalSize = 0;
 	tb->cnt_0 = 0;
