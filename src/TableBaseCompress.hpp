@@ -1,4 +1,3 @@
-#include "TableBase.h"
 
 #include "lz4frame.h"
 #include "lz4.h"
@@ -9,7 +8,9 @@ constexpr LZ4F_preferences_t LZ4Prefs {
 	.compressionLevel = 0,
 };
 
-void RefRowWrapper::compress(TableBase& tb) {
+
+template <U16 TB_MEN, bool STORE_WIN>
+void RefRowWrapper<TB_MEN, STORE_WIN>::compress(TableBase<TB_MEN, STORE_WIN>& tb) {
 	assert(!isCompressed);
 	isBusy = true;
 	memComp = std::vector<unsigned char>(LZ4F_compressFrameBound(mem.size() * sizeof(U64), &LZ4Prefs));
@@ -39,7 +40,8 @@ void RefRowWrapper::compress(TableBase& tb) {
 U64 totalLoads = 0;
 U64 totalDecompressions = 0;
 
-void RefRowWrapper::decompress(TableBase& tb, U16 cardI) {
+template <U16 TB_MEN, bool STORE_WIN>
+void RefRowWrapper<TB_MEN, STORE_WIN>::decompress(TableBase<TB_MEN, STORE_WIN>& tb, U16 cardI) {
 	totalLoads++;
 	if(!isCompressed)
 		return;
@@ -57,7 +59,7 @@ void RefRowWrapper::decompress(TableBase& tb, U16 cardI) {
 	size_t outBuf = memSize * sizeof(U64);
 	size_t inBuf = memComp.size() * sizeof(char);
 	
-	allocateDecompressed(memSize, tb, cardI);
+	allocateDecompressed<TB_MEN, STORE_WIN>(memSize, tb, cardI);
 
 	std::atomic<U64>* dstPtr = mem.data();
 	unsigned char* srcPtr = memComp.data();
@@ -81,12 +83,12 @@ void RefRowWrapper::decompress(TableBase& tb, U16 cardI) {
 	totalDecompressions++;
 }
 
-
-void RefRowWrapper::allocateDecompressed(U64 size, TableBase& tb, U16 currentCardI) {
+template <U16 TB_MEN, bool STORE_WIN>
+void RefRowWrapper<TB_MEN, STORE_WIN>::allocateDecompressed(U64 size, TableBase<TB_MEN, STORE_WIN>& tb, U16 currentCardI) {
 	tb.memory_remaining -= size * sizeof(U64);
 	while (tb.memory_remaining < 0) {
 		// find uncompressed row that will be used last
-		RefRowWrapper* longestUnusedRow = nullptr;
+		RefRowWrapper<TB_MEN, STORE_WIN>* longestUnusedRow = nullptr;
 		U64 longestUnusedRowSize = 0;
 		U16 longestWithoutUsage = 0;
 		for (U64 rowI = 0; rowI < CARDSMULT; rowI++) {

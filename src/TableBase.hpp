@@ -1,7 +1,6 @@
-#include "TableBase.h"
 
 #include "Board.h"
-#include "Index.h"
+#include "Index.hpp"
 #include "Card.hpp"
 #include "Config.h"
 
@@ -17,19 +16,21 @@
 
 
 
-constexpr U64 CHUNK_SIZE = PIECECOUNTMULT; // a divisor of PIECECOUNTMULT * KINGSMULT is used
+template <U16 TB_MEN>
+constexpr U64 CHUNK_SIZE = PIECECOUNTMULT<TB_MEN>; // a divisor of PIECECOUNTMULT * KINGSMULT is used
 
-template<int depth>
-void singleDepthPass(const CardsInfo& cards, U16 cardI, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
-void singleThread(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified, std::atomic<U64>& threadsDone, std::atomic<U64>& threadsStart) {
+template<U16 TB_MEN, bool STORE_WIN, int depth>
+void singleDepthPass(const CardsInfo& cards, U16 cardI, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified);
+template<U16 TB_MEN, bool STORE_WIN>
+void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified, std::atomic<U64>& threadsDone, std::atomic<U64>& threadsStart) {
 	U64 depth = 2;
 	U16 cardI = 0;
 
 	while (true) {
 		if (depth == 2)
-			singleDepthPass<2>(cards, cardI, tb, chunkCounter, modified);
+			singleDepthPass<TB_MEN, STORE_WIN, 2>(cards, cardI, tb, chunkCounter, modified);
 		else
-			singleDepthPass<3>(cards, cardI, tb, chunkCounter, modified);
+			singleDepthPass<TB_MEN, STORE_WIN, 3>(cards, cardI, tb, chunkCounter, modified);
 
 		threadsDone++; // mark that it is done
 		threadsDone.notify_all();
@@ -58,27 +59,27 @@ void singleThread(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunk
 	}
 }
 
+template<U16 TB_MEN, bool STORE_WIN>
+std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards) {
 
-std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
-
-	auto tb = std::make_unique<TableBase>();
+	auto tb = std::make_unique<TableBase<TB_MEN, STORE_WIN>>();
 
 	tb->memory_remaining = 1'000'000'000;
 	
-	std::cout << "jump table size: " << sizeof(TableBase::RefTable) / sizeof(void*) << " entries (" << sizeof(TableBase::RefTable) / 1024 << "KB)" << std::endl;
+	std::cout << "jump table size: " << sizeof(TableBase<TB_MEN, STORE_WIN>::RefTable) / sizeof(void*) << " entries (" << sizeof(TableBase<TB_MEN, STORE_WIN>::RefTable) / 1024 << "KB)" << std::endl;
 
 	U64 totalRows = 0, totalSize = 0;
 	tb->cnt_0 = 0;
 	for (U64 cardI = CARDSMULT; cardI--> 0; ) { //TODO
-		RefRowWrapper& cardTb = (*tb)[cardI];
+		RefRowWrapper<TB_MEN, STORE_WIN>& cardTb = (*tb)[cardI];
 		auto permutation = CARDS_PERMUTATIONS[cardI];
 		const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
 		const MoveBoard combinedOtherMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[0][0]], cards.moveBoardsForward[permutation.playerCards[0][1]]);
 
 
 		U32 rows = 0, size = 0;
-		iterateTBCounts(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
-			rows += (rowSize + NUM_BOARDS_PER_U64 - 1) / NUM_BOARDS_PER_U64;
+		iterateTBCounts<TB_MEN>(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
+			rows += (rowSize + NUM_BOARDS_PER_U64<STORE_WIN> - 1) / NUM_BOARDS_PER_U64<STORE_WIN>;
 			size += rowSize;
 		});
 
@@ -95,14 +96,14 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 		}
 		U32 passedRowsCount = 0;
 		// set final bits to resolved.
-		iterateTBCounts(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
+		iterateTBCounts<TB_MEN>(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
 			cardTb.refs[pieceCnt_kingsIndex] = passedRowsCount;
 			if (rowSize == 0)
 				return;
-			U64 rowEntries = (rowSize + NUM_BOARDS_PER_U64 - 1) / NUM_BOARDS_PER_U64;
+			U64 rowEntries = (rowSize + NUM_BOARDS_PER_U64<STORE_WIN> - 1) / NUM_BOARDS_PER_U64<STORE_WIN>;
 			passedRowsCount += rowEntries;
-			cardTb.mem[passedRowsCount - 1] = (NUM_BOARDS_PER_U64 < 64 ? 1ULL << NUM_BOARDS_PER_U64 : 0) - (1ULL << (((rowSize + NUM_BOARDS_PER_U64 - 1) % NUM_BOARDS_PER_U64) + 1)); // mark final rows as resolved so we dont have to worry about it
-			tb->cnt_0 -= countResolved(cardTb.mem[passedRowsCount - 1]);
+			cardTb.mem[passedRowsCount - 1] = (NUM_BOARDS_PER_U64<STORE_WIN> < 64 ? 1ULL << NUM_BOARDS_PER_U64<STORE_WIN> : 0) - (1ULL << (((rowSize + NUM_BOARDS_PER_U64<STORE_WIN> - 1) % NUM_BOARDS_PER_U64<STORE_WIN>) + 1)); // mark final rows as resolved so we dont have to worry about it
+			tb->cnt_0 -= countResolved<STORE_WIN>(cardTb.mem[passedRowsCount - 1]);
 		});
 
 		cardTb.refs.back() = passedRowsCount;
@@ -133,7 +134,7 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 	(*tb)[CARDS_SWAP[cardI][0][1]].decompress(*tb, invCardI);
 
 	for (U64 i = 0; i < numThreads; i++)
-		threads[i] = std::thread(&singleThread, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified), std::ref(threadsDone), std::ref(threadsStart));
+		threads[i] = std::thread(&singleThread<TB_MEN, STORE_WIN>, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified), std::ref(threadsDone), std::ref(threadsStart));
 
 	while (true) {
 
@@ -220,7 +221,7 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 		auto& row = tb->refTable[i];
 		row.decompress(*tb, i);
 		for (auto& entry : row.mem)
-			tb->cnt += countResolved(entry);
+			tb->cnt += countResolved<STORE_WIN>(entry);
 		// row.compress();
 	}
 	printf("found %llu boards in %.3fs/%.3fs\n", tb->cnt, totalTime, totalInclusiveTime);
@@ -234,8 +235,8 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
 
 // iterate over unresolved states to find p0 wins with p1 to move. Check if all possible p1 moves result in wins for p0.
-template<int depth>
-void singleDepthPass(const CardsInfo& cards, U16 invCardI, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified) {
+template<U16 TB_MEN, bool STORE_WIN, int depth>
+void singleDepthPass(const CardsInfo& cards, U16 invCardI, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified) {
 	bool mod = false;
 	BoardIndex bi;
 	// U64 i = 0;
@@ -264,15 +265,15 @@ void singleDepthPass(const CardsInfo& cards, U16 invCardI, TableBase& tb, std::a
 	const MoveBoard& moveboard_p0_cardside_rev = cards.moveBoardsReverse[permutation.sideCard];
 
 	while (true) {
-		bi.pieceCnt_kingsIndex = CHUNK_SIZE * chunkCounter++;
-		if (bi.pieceCnt_kingsIndex >= PIECECOUNTMULT * KINGSMULT) {
+		bi.pieceCnt_kingsIndex = CHUNK_SIZE<TB_MEN> * chunkCounter++;
+		if (bi.pieceCnt_kingsIndex >= PIECECOUNTMULT<TB_MEN> * KINGSMULT) {
 			[[unlikely]]
 			// std::cout << i << std::endl;
 			break;
 		}
 		
 		bi.pieceCnt_kingsIndex--;
-		for (U64 i = 0; i < CHUNK_SIZE; i++) {
+		for (U64 i = 0; i < CHUNK_SIZE<TB_MEN>; i++) {
 			bi.pieceCnt_kingsIndex++;
 
 			std::atomic<U64>* currentEntry = cardTb[bi.pieceCnt_kingsIndex];
@@ -280,14 +281,14 @@ void singleDepthPass(const CardsInfo& cards, U16 invCardI, TableBase& tb, std::a
 			if (currentEntry == lastEntry)
 				continue;
 
-			for (U64 pieceIndex = 0; currentEntry < lastEntry; pieceIndex += NUM_BOARDS_PER_U64) {
+			for (U64 pieceIndex = 0; currentEntry < lastEntry; pieceIndex += NUM_BOARDS_PER_U64<STORE_WIN>) {
 				auto& entry = *currentEntry++;
 				U64 newP1Wins = 0;
-				for (auto bits = getResolvedBits(~entry); bits; bits &= bits - 1) {
+				for (auto bits = getResolvedBits<STORE_WIN>(~entry); bits; bits &= bits - 1) {
 					U64 bitIndex = _tzcnt_u64(bits);
 					bi.pieceIndex = pieceIndex + bitIndex;
 
-					Board board = indexToBoard<1>(bi, moveBoard_p1_card01); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
+					Board board = indexToBoard<TB_MEN, 1>(bi, moveBoard_p1_card01); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
 
 					bool isTempleThreatened = board.isTempleKingInRange<0>(moveBoard_p0_card01_rev);
 					if (!(isTempleThreatened && board.isTempleFree<0>())) { // if p0 can just walk to temple
@@ -316,16 +317,16 @@ void singleDepthPass(const CardsInfo& cards, U16 invCardI, TableBase& tb, std::a
 										.bbk = { board.bbk[0], board.bbk[1] },
 									};
 
-									auto ti = boardToIndex<0>(targetBoard, moveBoard_p0_card01_rev); // the resulting board has p0 to move and needs to be a win
+									auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card01_rev); // the resulting board has p0 to move and needs to be a win
 										
 									bool oneTrue = false;
 									if (landPiece & moveBoard_p1_card0_or_01[pp]) {
 										oneTrue = true;
-									if ((targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
+									if ((targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>))) == 0)
 											goto notWin;
 									}
 									if (depth > 2 && (!oneTrue || landPiece & moveBoard_p1_card1_rev[pp]))
-										if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
+										if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>))) == 0)
 											goto notWin;
 								}
 							}
@@ -352,17 +353,17 @@ void singleDepthPass(const CardsInfo& cards, U16 invCardI, TableBase& tb, std::a
 								if (depth == 2)
 									goto notWin;
 
-								auto ti = boardToIndex<0>(targetBoard, moveBoard_p0_card01_rev); // the resulting board has p0 to move and needs to be a win
+								auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card01_rev); // the resulting board has p0 to move and needs to be a win
 
 								bool oneTrue = false;
 								if (landPiece & moveBoard_p1_card0_or_01[pp]) {
 									oneTrue = true;
-									if ((targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
+									if ((targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>))) == 0)
 										goto notWin;
 								}
 									
 								if (depth > 2 && (!oneTrue || (landPiece & moveBoard_p1_card1_rev[pp])))
-									if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64))) == 0)
+									if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].load(std::memory_order_relaxed) & (1ULL << (STORE_WIN ? 32 : 0) << (ti.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>))) == 0)
 										goto notWin;
 							}
 						}
@@ -413,15 +414,15 @@ void singleDepthPass(const CardsInfo& cards, U16 invCardI, TableBase& tb, std::a
 								bool isWinInOne1 = (pk1Unmove1 & targetBoard.bbp[0]) || (kingInTempleRange1 && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
 								if (!isWinInOne0) {
 									BoardToIndexIntermediate im;
-									auto ti = boardToIndex<0>(targetBoard, moveBoard_p0_card1side_rev, im);
-									p0ReverseTargetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].fetch_or(getWinBits(ti.pieceIndex % NUM_BOARDS_PER_U64), std::memory_order_relaxed);
+									auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card1side_rev, im);
+									p0ReverseTargetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>), std::memory_order_relaxed);
 									if (!isWinInOne1) {
-										auto ti1 = boardToIndexFromIntermediate<0>(targetBoard, moveBoard_p0_card0side_rev, ti, im);
-										p0ReverseTargetRow1[ti1.pieceCnt_kingsIndex][ti1.pieceIndex / NUM_BOARDS_PER_U64].fetch_or(getWinBits(ti1.pieceIndex % NUM_BOARDS_PER_U64), std::memory_order_relaxed);
+										auto ti1 = boardToIndexFromIntermediate<TB_MEN, 0>(targetBoard, moveBoard_p0_card0side_rev, ti, im);
+										p0ReverseTargetRow1[ti1.pieceCnt_kingsIndex][ti1.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti1.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>), std::memory_order_relaxed);
 									}
 								} else if (!isWinInOne1) {
-									auto ti = boardToIndex<0>(targetBoard, moveBoard_p0_card0side_rev);
-									p0ReverseTargetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].fetch_or(getWinBits(ti.pieceIndex % NUM_BOARDS_PER_U64), std::memory_order_relaxed);
+									auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card0side_rev);
+									p0ReverseTargetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>), std::memory_order_relaxed);
 								}
 							}
 							scan &= scan - 1;
@@ -444,15 +445,15 @@ void singleDepthPass(const CardsInfo& cards, U16 invCardI, TableBase& tb, std::a
 								bool isWinInOne1 = (pk1Unmove1 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove1 & targetBoard.bbk[0]) && !pawnTempleBlock);
 								if (!isWinInOne0) {
 									BoardToIndexIntermediate im;
-									auto ti = boardToIndex<0>(targetBoard, moveBoard_p0_card1side_rev, im);
-									p0ReverseTargetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].fetch_or(getWinBits(ti.pieceIndex % NUM_BOARDS_PER_U64), std::memory_order_relaxed);
+									auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card1side_rev, im);
+									p0ReverseTargetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>), std::memory_order_relaxed);
 									if (!isWinInOne1) {
-										auto ti1 = boardToIndexFromIntermediate<0>(targetBoard, moveBoard_p0_card0side_rev, ti, im);
-										p0ReverseTargetRow1[ti1.pieceCnt_kingsIndex][ti1.pieceIndex / NUM_BOARDS_PER_U64].fetch_or(getWinBits(ti1.pieceIndex % NUM_BOARDS_PER_U64), std::memory_order_relaxed);
+										auto ti1 = boardToIndexFromIntermediate<TB_MEN, 0>(targetBoard, moveBoard_p0_card0side_rev, ti, im);
+										p0ReverseTargetRow1[ti1.pieceCnt_kingsIndex][ti1.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti1.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>), std::memory_order_relaxed);
 									}
 								} else if (!isWinInOne1) {
-									auto ti = boardToIndex<0>(targetBoard, moveBoard_p0_card0side_rev);
-									p0ReverseTargetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].fetch_or(getWinBits(ti.pieceIndex % NUM_BOARDS_PER_U64), std::memory_order_relaxed);
+									auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card0side_rev);
+									p0ReverseTargetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>), std::memory_order_relaxed);
 								}
 							}
 						}
@@ -478,15 +479,15 @@ void singleDepthPass(const CardsInfo& cards, U16 invCardI, TableBase& tb, std::a
 									bool isWinInOne1 = (pk1Unmove1 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove1 & targetBoard.bbk[0]) && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
 									if (!isWinInOne0) {
 										BoardToIndexIntermediate im;
-										auto ti = boardToIndex<0>(targetBoard, moveBoard_p0_card1side_rev, im);
-										p0ReverseTargetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].fetch_or(getWinBits(ti.pieceIndex % NUM_BOARDS_PER_U64), std::memory_order_relaxed);
+										auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card1side_rev, im);
+										p0ReverseTargetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>), std::memory_order_relaxed);
 										if (!isWinInOne1) {
-											auto ti1 = boardToIndexFromIntermediate<0>(targetBoard, moveBoard_p0_card0side_rev, ti, im);
-											p0ReverseTargetRow1[ti1.pieceCnt_kingsIndex][ti1.pieceIndex / NUM_BOARDS_PER_U64].fetch_or(getWinBits(ti1.pieceIndex % NUM_BOARDS_PER_U64), std::memory_order_relaxed);
+											auto ti1 = boardToIndexFromIntermediate<TB_MEN, 0>(targetBoard, moveBoard_p0_card0side_rev, ti, im);
+											p0ReverseTargetRow1[ti1.pieceCnt_kingsIndex][ti1.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti1.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>), std::memory_order_relaxed);
 										}
 									} else if (!isWinInOne1) {
-										auto ti = boardToIndex<0>(targetBoard, moveBoard_p0_card0side_rev);
-										p0ReverseTargetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].fetch_or(getWinBits(ti.pieceIndex % NUM_BOARDS_PER_U64), std::memory_order_relaxed);
+										auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card0side_rev);
+										p0ReverseTargetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>), std::memory_order_relaxed);
 									}
 								}
 								scan &= scan - 1;
@@ -509,15 +510,15 @@ void singleDepthPass(const CardsInfo& cards, U16 invCardI, TableBase& tb, std::a
 									bool isWinInOne1 = (pk1Unmove1 & targetBoard.bbp[0]) || ((bbk0WinPosUnmove1 & targetBoard.bbk[0]) && (!(targetBoard.bbp[0] & (1 << PTEMPLE[0]))));
 									if (!isWinInOne0) {
 										BoardToIndexIntermediate im;
-										auto ti = boardToIndex<0>(targetBoard, moveBoard_p0_card1side_rev, im);
-										p0ReverseTargetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].fetch_or(getWinBits(ti.pieceIndex % NUM_BOARDS_PER_U64), std::memory_order_relaxed);
+										auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card1side_rev, im);
+										p0ReverseTargetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>), std::memory_order_relaxed);
 										if (!isWinInOne1) {
-											auto ti1 = boardToIndexFromIntermediate<0>(targetBoard, moveBoard_p0_card0side_rev, ti, im);
-											p0ReverseTargetRow1[ti1.pieceCnt_kingsIndex][ti1.pieceIndex / NUM_BOARDS_PER_U64].fetch_or(getWinBits(ti1.pieceIndex % NUM_BOARDS_PER_U64), std::memory_order_relaxed);
+											auto ti1 = boardToIndexFromIntermediate<TB_MEN, 0>(targetBoard, moveBoard_p0_card0side_rev, ti, im);
+											p0ReverseTargetRow1[ti1.pieceCnt_kingsIndex][ti1.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti1.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>), std::memory_order_relaxed);
 										}
 									} else if (!isWinInOne1) {
-										auto ti = boardToIndex<0>(targetBoard, moveBoard_p0_card0side_rev);
-										p0ReverseTargetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64].fetch_or(getWinBits(ti.pieceIndex % NUM_BOARDS_PER_U64), std::memory_order_relaxed);
+										auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card0side_rev);
+										p0ReverseTargetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_U64<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti.pieceIndex % NUM_BOARDS_PER_U64<STORE_WIN>), std::memory_order_relaxed);
 									}
 								}
 							}

@@ -20,10 +20,10 @@ int main(int, char**) {
     } else if (0) {
 		exhaustiveIndexTest(CARDS);
 	} else if (0) {
-        auto tb = generateTB(CARDS);
+        auto tb = generateTB<6, false>(CARDS);
 		// tb->testCompression();
 	} else if (1) {
-        auto tb = generateTB(CARDS);
+        auto tb = generateTB<6, false>(CARDS);
 		if (0) {
 			// auto tbBinary = tb->compress();
 			// std::ofstream f(std::to_string(TB_MEN) + "men.bin", std::ios::binary);
@@ -40,8 +40,8 @@ int main(int, char**) {
 				auto permutation = CARDS_PERMUTATIONS[cardI];
 				const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
 
-				iterateTBCounts(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
-					totalRows += (rowSize + NUM_BOARDS_PER_U64 - 1) / NUM_BOARDS_PER_U64;
+				iterateTBCounts<6>(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
+					totalRows += (rowSize + NUM_BOARDS_PER_U64<false> - 1) / NUM_BOARDS_PER_U64<false>;
 				});
 			}
 			if (totalRows < smallestTB) {

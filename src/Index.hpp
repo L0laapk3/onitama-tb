@@ -27,10 +27,6 @@
 #endif
 
 
-
-void iterateTBCounts(const MoveBoard& reverseMoveBoard, std::function<void(U32, U32)> cb);
-
-
 struct BoardIndex {
 	U32 pieceCnt_kingsIndex;
 	U32 pieceIndex;
@@ -39,9 +35,12 @@ struct BoardIndex {
 
 constexpr U32 CARDSMULT = 30;
 constexpr U32 KINGSMULT = 23*24+1;
+
+template <U16 TB_MEN>
 constexpr U32 PIECECOUNTMULT = (TB_MEN / 2) * (TB_MEN / 2);
 
 
+template <U16 TB_MEN>
 constexpr auto PIECES1MULT = [](){
 	std::array<std::array<U32, TB_MEN/2>, TB_MEN/2> a{};
 	for (int p0 = 0; p0 < TB_MEN/2; p0++)
@@ -49,22 +48,30 @@ constexpr auto PIECES1MULT = [](){
 			a[p0][p1] = fact(23-p0, 23-p0-p1) / fact(p1);
 	return a;
 }();
-#define PIECES0MULT PIECES1MULT[0]
+
+template <U16 TB_MEN>
+inline auto& PIECES0MULT() {
+	return PIECES1MULT<TB_MEN>[0];
+}
+
+template <U16 TB_MEN>
 constexpr auto PIECES10MULT = [](){
 	std::array<std::array<U32, TB_MEN/2>, TB_MEN/2> a{};
 	for (int p0 = 0; p0 < TB_MEN/2; p0++)
 		for (int p1 = 0; p1 < TB_MEN/2; p1++)
-			a[p0][p1] = PIECES0MULT[p0] * PIECES1MULT[p0][p1];
+			a[p0][p1] = PIECES0MULT<TB_MEN>()[p0] * PIECES1MULT<TB_MEN>[p0][p1];
 	return a;
 }();
+template <U16 TB_MEN>
 constexpr auto PIECES10KMULT = [](){
 	std::array<std::array<U32, TB_MEN/2>, TB_MEN/2> a{};
 	for (int p0 = 0; p0 < TB_MEN/2; p0++)
 		for (int p1 = 0; p1 < TB_MEN/2; p1++)
-			a[p0][p1] = KINGSMULT * PIECES0MULT[p0] * PIECES1MULT[p0][p1];
+			a[p0][p1] = KINGSMULT * PIECES0MULT<TB_MEN>()[p0] * PIECES1MULT<TB_MEN>[p0][p1];
 	return a;
 }();
 
+template <U16 TB_MEN>
 constexpr auto GENERATE_OFFSETS() {
 	std::array<std::pair<U64, U64>, TB_MEN/2 * TB_MEN/2> a{};
 	std::array<std::array<U32, TB_MEN/2>, TB_MEN/2> b{};
@@ -82,28 +89,36 @@ constexpr auto GENERATE_OFFSETS() {
 	// 		a[index++] = { p0c, p1c };
     return std::pair{ a, b };
 };
-constexpr auto OFFSET_ORDER = GENERATE_OFFSETS().first;
-constexpr auto OFFSET_LOOKUP = GENERATE_OFFSETS().second;
+template <U16 TB_MEN>
+constexpr auto OFFSET_ORDER = GENERATE_OFFSETS<TB_MEN>().first;
+template <U16 TB_MEN>
+constexpr auto OFFSET_LOOKUP = GENERATE_OFFSETS<TB_MEN>().second;
 
 
-template<bool includeSelf>
+template<U16 TB_MEN, bool includeSelf>
 constexpr auto GENERATE_TABLE_SIZES() {
 	std::array<std::array<U64, TB_MEN/2>, TB_MEN/2> a{};
     U64 offset_cumul = 0;
-	for (auto& pc : OFFSET_ORDER) {
-		if (!includeSelf) a[pc.first][pc.second] = offset_cumul;
-        offset_cumul += KINGSMULT * PIECES10MULT[pc.first][pc.second];
-		if (includeSelf) a[pc.first][pc.second] = offset_cumul;
+	for (auto& pc : OFFSET_ORDER<TB_MEN>) {
+		if (!includeSelf)
+			a[pc.first][pc.second] = offset_cumul;
+        offset_cumul += KINGSMULT * PIECES10MULT<TB_MEN>[pc.first][pc.second];
+		if (includeSelf)
+			a[pc.first][pc.second] = offset_cumul;
     }
 	return std::pair{ a, offset_cumul };
 }
-constexpr U64 TB_ROW_SIZE = GENERATE_TABLE_SIZES<false>().second;
+template <U16 TB_MEN>
+constexpr U64 TB_ROW_SIZE = GENERATE_TABLE_SIZES<TB_MEN, false>().second;
 
-constexpr auto OFFSETS = GENERATE_TABLE_SIZES<false>().first;
-constexpr auto MAX_INDEX = GENERATE_TABLE_SIZES<true>().first;
+template <U16 TB_MEN>
+constexpr auto OFFSETS = GENERATE_TABLE_SIZES<TB_MEN, false>().first;
+template <U16 TB_MEN>
+constexpr auto MAX_INDEX = GENERATE_TABLE_SIZES<TB_MEN, true>().first;
 
 
 
+template <U16 TB_MEN>
 constexpr auto OFFSETS_SUB_EMPTY = [](){
 	std::array<std::array<std::array<U32, 2>, TB_MEN/2>, TB_MEN/2> a{};
 	for (int p0c = 0; p0c < TB_MEN/2; p0c++) {
@@ -111,10 +126,10 @@ constexpr auto OFFSETS_SUB_EMPTY = [](){
 			U64 offset = 0;
 
 			// when not all pieces are on the board, lzcnt/tzcnt returns 64. We include this here at compile-time in the offset tables.
-			if (p0c < 4 && TB_MEN > 8) offset += PIECES1MULT[p0c][p1c] * 32 * 31 * 30 * 29 / 24;
-			if (p0c < 3 && TB_MEN > 6) offset += PIECES1MULT[p0c][p1c] * 32 * 31 * 30 / 6;
-			if (p0c < 2) offset += PIECES1MULT[p0c][p1c] * 32 * 31 / 2;
-			if (p0c < 1) offset += PIECES1MULT[p0c][p1c] * 32;
+			if (p0c < 4 && TB_MEN > 8) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 * 29 / 24;
+			if (p0c < 3 && TB_MEN > 6) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 / 6;
+			if (p0c < 2) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 / 2;
+			if (p0c < 1) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32;
 
 			if (p1c < 4 && TB_MEN > 8) offset += 32 * 31 * 30 * 29 / 24;
 			if (p1c < 3 && TB_MEN > 6) offset += 32 * 31 * 30 / 6;
@@ -123,10 +138,10 @@ constexpr auto OFFSETS_SUB_EMPTY = [](){
 
 			a[p0c][p1c][0] = offset;
 
-			if (p0c == 4) offset += PIECES1MULT[p0c][p1c] * 32 * 31 * 30 * 29 / 24;
-			if (p0c == 3) offset += PIECES1MULT[p0c][p1c] * 32 * 31 * 30 / 6;
-			if (p0c == 2) offset += PIECES1MULT[p0c][p1c] * 32 * 31 / 2;
-			if (p0c == 1) offset += PIECES1MULT[p0c][p1c] * 32;
+			if (p0c == 4) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 * 29 / 24;
+			if (p0c == 3) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 / 6;
+			if (p0c == 2) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 / 2;
+			if (p0c == 1) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32;
 
 			a[p0c][p1c][1] = offset;
 		}
@@ -194,66 +209,29 @@ constexpr auto GENERATE_PAWN_TABLE() {
 constexpr auto TABLE_ZEROPAWNS = GENERATE_PAWN_TABLE<0, false>();
 constexpr auto TABLE_ONEPAWN = GENERATE_PAWN_TABLE<1, false>();
 constexpr auto TABLE_TWOPAWNS = GENERATE_PAWN_TABLE<2, false>();
-#if TB_MEN >= 8
-	constexpr auto TABLE_THREEPAWNS = GENERATE_PAWN_TABLE<3, false>();
-#endif
-#if TB_MEN >= 10
-	constexpr auto TABLE_FOURPAWNS = GENERATE_PAWN_TABLE<4, false>();
-#endif
+constexpr auto TABLE_THREEPAWNS = GENERATE_PAWN_TABLE<3, false>();
+constexpr auto TABLE_FOURPAWNS = GENERATE_PAWN_TABLE<4, false>();
+
 constexpr auto TABLE_ZEROPAWNS_INV = GENERATE_PAWN_TABLE<0, true>();
 constexpr auto TABLE_ONEPAWN_INV = GENERATE_PAWN_TABLE<1, true>();
 constexpr auto TABLE_TWOPAWNS_INV = GENERATE_PAWN_TABLE<2, true>();
-#if TB_MEN >= 8
-	constexpr auto TABLE_THREEPAWNS_INV = GENERATE_PAWN_TABLE<3, true>();
-#endif
-#if TB_MEN >= 10
-	constexpr auto TABLE_FOURPAWNS_INV = GENERATE_PAWN_TABLE<4, true>();
-#endif
-#if TB_MEN == 6
-	constexpr std::array<std::array<const U32*, 3>, 2> PAWNTABLE_POINTERS = {{
-		{ &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0] },
-		{ &TABLE_ZEROPAWNS_INV[0], &TABLE_ONEPAWN_INV[0], &TABLE_TWOPAWNS_INV[0] },
-	}};
-#elif TB_MEN == 8
-	constexpr std::array<std::array<const U32*, 4>, 2> PAWNTABLE_POINTERS = {{
-		{ &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0] },
-		{ &TABLE_ZEROPAWNS_INV[0], &TABLE_ONEPAWN_INV[0], &TABLE_TWOPAWNS_INV[0], &TABLE_THREEPAWNS_INV[0] },
-	}};
-#else
-	constexpr std::array<std::array<const U32*, 5>, 2> PAWNTABLE_POINTERS = {{
-		{ &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0], &TABLE_FOURPAWNS[0] },
-		{ &TABLE_ZEROPAWNS_INV[0], &TABLE_ONEPAWN_INV[0], &TABLE_TWOPAWNS_INV[0], &TABLE_THREEPAWNS_INV[0], &TABLE_FOURPAWNS_INV[0] },
-	}};
-#endif
+constexpr auto TABLE_THREEPAWNS_INV = GENERATE_PAWN_TABLE<3, true>();
+constexpr auto TABLE_FOURPAWNS_INV = GENERATE_PAWN_TABLE<4, true>();
 
 
-#if TB_MEN >= 10
-constexpr auto MULTABLE4 = [](){
-	std::array<U64, 30> a{};
-	for (int i = 0; i < 30; i++) {
-		U64 v = i + 3;
-		a[i] = v * (v - 1) * (v - 2) * (v - 3) / 24;
+constexpr std::array<std::array<const U32*, 5>, 2> PAWNTABLE_POINTERS = {{
+	{ &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0], &TABLE_FOURPAWNS[0] },
+	{ &TABLE_ZEROPAWNS_INV[0], &TABLE_ONEPAWN_INV[0], &TABLE_TWOPAWNS_INV[0], &TABLE_THREEPAWNS_INV[0], &TABLE_FOURPAWNS_INV[0] },
+}};
+
+
+template <U16 pawns>
+constexpr auto MULTABLE = [](){
+	std::array<U64, 34 - pawns> a{};
+	for (int i = 0; i < 34 - pawns; i++) {
+		a[i] = fact(i + pawns - 1, i - 1) / fact(pawns);
 	}
-    return a;
-}();
-#endif
-#if TB_MEN >= 8
-constexpr auto MULTABLE3 = [](){
-	std::array<U64, 31> a{};
-	for (int i = 0; i < 31; i++) {
-		U64 v = i + 2;
-		a[i] = v * (v - 1) * (v - 2) / 6;
-	}
-    return a;
-}();
-#endif
-constexpr auto MULTABLE2 = [](){
-	std::array<U64, 32> a{};
-	for (U64 i = 0; i < 32; i++) {
-		U64 v = i + 1;
-		a[i] = v * (v - 1) / 2;
-	}
-    return a;
+	return a;
 }();
 
 
@@ -299,7 +277,7 @@ U64 INLINE_INDEX_FN indexToBoard_decompactPawnBitboard(U64 bbp, U64 mask) {
 
 
 
-template <bool invert>
+template <U16 TB_MEN, bool invert>
 U32 INLINE_INDEX_FN boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
 
 	// 0 means the piece has been taken and is not on the board
@@ -322,12 +300,12 @@ U32 INLINE_INDEX_FN boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
 
 	U32 r = 0;
 	#if TB_MEN >= 10
-		r += MULTABLE4[ip3 - 3];
+		r += MULTABLE<4>[ip3 - 3];
 	#endif
 	#if TB_MEN >= 8
-		r += MULTABLE3[ip2 - 2];
+		r += MULTABLE<3>[ip2 - 2];
 	#endif
-	r += MULTABLE2[ip1 - 1];
+	r += MULTABLE<2>[ip1 - 1];
 	r += ip0;
 	return r;
 }
@@ -339,7 +317,7 @@ struct BoardToIndexIntermediate {
 };
 // boardToIndex<false>(board): given a board with player 0 to move, returns unique index for that board
 // boardToIndex<true>(board): same but for player 1. Identical to boardToIndex<false>(board.invert())
-template <bool invert>
+template <U16 TB_MEN, bool invert>
 BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMoveBoard, BoardToIndexIntermediate& im) {
 	if (invert) {
 		std::swap(board.bbp[0], board.bbp[1]);
@@ -356,9 +334,9 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	board.bbp[0] &= ~board.bbk[0];
 	U64 pp0cnt = _popcnt64(board.bbp[0]);
 	U64 pp1cnt = _popcnt64(board.bbp[1]);
-	U32 rpc = OFFSET_LOOKUP[pp0cnt][pp1cnt];
-	im.mul = PIECES1MULT[pp0cnt][pp1cnt];
-	auto& offsetArr = OFFSETS_SUB_EMPTY[pp0cnt][pp1cnt];
+	U32 rpc = OFFSET_LOOKUP<TB_MEN>[pp0cnt][pp1cnt];
+	im.mul = PIECES1MULT<TB_MEN>[pp0cnt][pp1cnt];
+	auto& offsetArr = OFFSETS_SUB_EMPTY<TB_MEN>[pp0cnt][pp1cnt];
 
 	// prevent king wins: any squares threatening the p1 king need to be masked out for p0.
 	U64 p0CompactMask = board.bbk[0] | board.bbk[1] | reverseMoveBoard[ik1];
@@ -374,22 +352,22 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 
 	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces
 
-	im.rp1 = boardToIndex_pawnBitboardToIndex<invert>(bbpc1, 9 + pp0cnt); // possible positions: 23 - pp0cnt
-	U32 rp0 = boardToIndex_pawnBitboardToIndex<invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // possible positions: 25 - popcnt(mask)
+	im.rp1 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc1, 9 + pp0cnt); // possible positions: 23 - pp0cnt
+	U32 rp0 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // possible positions: 25 - popcnt(mask)
 
 	return {
 		.pieceCnt_kingsIndex = rpc + rk,
 		.pieceIndex = rp0 * im.mul + im.rp1 - offset,
 	};
 }
-template <bool invert>
+template <U16 TB_MEN, bool invert>
 BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMoveBoard) {
 	BoardToIndexIntermediate im;
-	return boardToIndex<invert>(board, reverseMoveBoard, im);
+	return boardToIndex<TB_MEN, invert>(board, reverseMoveBoard, im);
 }
 
 
-template <bool invert>
+template <U16 TB_MEN, bool invert>
 BoardIndex INLINE_INDEX_FN boardToIndexFromIntermediate(Board board, const MoveBoard& reverseMoveBoard, BoardIndex& bi, BoardToIndexIntermediate& im) {
 	if (invert) {
 		std::swap(board.bbp[0], board.bbp[1]);
@@ -399,7 +377,7 @@ BoardIndex INLINE_INDEX_FN boardToIndexFromIntermediate(Board board, const MoveB
 	board.bbp[0] &= ~board.bbk[0];
 	U64 pp0cnt = _popcnt64(board.bbp[0]);
 	U64 pp1cnt = _popcnt64(board.bbp[1]) - 1;
-	auto& offsetArr = OFFSETS_SUB_EMPTY[pp0cnt][pp1cnt];
+	auto& offsetArr = OFFSETS_SUB_EMPTY<TB_MEN>[pp0cnt][pp1cnt];
 
 	U64 ik1 = _tzcnt_u64(board.bbk[1]);
 	U64 p0CompactMask = board.bbk[0] | board.bbk[1] | reverseMoveBoard[ik1];
@@ -414,7 +392,7 @@ BoardIndex INLINE_INDEX_FN boardToIndexFromIntermediate(Board board, const MoveB
 	U32 offset = offsetArr[templeWin];
 
 	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces
-	U32 rp0 = boardToIndex_pawnBitboardToIndex<invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // possible positions: 25 - popcnt(mask)
+	U32 rp0 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // possible positions: 25 - popcnt(mask)
 
 	return {
 		.pieceCnt_kingsIndex = bi.pieceCnt_kingsIndex,
@@ -428,7 +406,7 @@ BoardIndex INLINE_INDEX_FN boardToIndexFromIntermediate(Board board, const MoveB
 
 // indexToBoard<false>(index): given a unique index, returns the board with player 0 to move
 // indexToBoard<true>(index): same but returns a board with player 1 to move. Identical to indexToBoard<false>(index).invert()
-template<bool invert>
+template<U16 TB_MEN, bool invert>
 Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBoard) {
 
 	U32 rk = bi.pieceCnt_kingsIndex % KINGSMULT;
@@ -450,9 +428,9 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 		p0CompactMask |= 1ULL << PTEMPLE[invert];
 	}
 
-	auto [p0c, p1c] = OFFSET_ORDER[rpc];
-	U64 ip1 = bi.pieceIndex % PIECES1MULT[p0c][p1c];
-	U64 ip0 = bi.pieceIndex / PIECES1MULT[p0c][p1c];
+	auto [p0c, p1c] = OFFSET_ORDER<TB_MEN>[rpc];
+	U64 ip1 = bi.pieceIndex % PIECES1MULT<TB_MEN>[p0c][p1c];
+	U64 ip0 = bi.pieceIndex / PIECES1MULT<TB_MEN>[p0c][p1c];
 
 	U64 bbpc0 = PAWNTABLE_POINTERS[invert][p0c - templeWin][ip0];
 	assert(_popcnt64(bbpc0) == p0c - templeWin);
@@ -489,6 +467,51 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 		.bbk = { bbk0, bbk1 },
 	};
 }
+
+
+
+
+
+
+
+template <U16 TB_MEN>
+void iterateTBCounts(const MoveBoard& reverseMoveBoard, std::function<void(U32, U32)> cb) {
+	for (U64 pieceCountI = 0; pieceCountI < PIECECOUNTMULT<TB_MEN>; pieceCountI++) {
+		auto& pc = OFFSET_ORDER<TB_MEN>[pieceCountI];
+		for (U64 kingI = 0; kingI < KINGSMULT; kingI++) {
+			U32 pieceCnt_kingsIndex = pieceCountI * KINGSMULT + kingI;
+			U32 rowSize;
+
+			U64 bbk0, bbk1;
+			std::tie(bbk0, bbk1) = TABLES_BBKINGS[0][kingI];
+			U64 ik1 = _tzcnt_u64(bbk1);
+
+			U64 p0mask = bbk0 | bbk1 | reverseMoveBoard[ik1];
+
+			if (reverseMoveBoard[ik1] & bbk0)
+				rowSize = 0;
+			else {
+				bool templeWinThreatened = reverseMoveBoard[PTEMPLE[0]] & bbk0;
+				if (templeWinThreatened && ((pc.first == 0) || (reverseMoveBoard[ik1] & (1 << PTEMPLE[0]))))
+					rowSize = 0;
+				else {
+					if (templeWinThreatened)
+						p0mask |= 1 << PTEMPLE[0];
+
+					U64 p0Options = 25 - _popcnt64(p0mask);
+					U64 p0Combinations = templeWinThreatened && !pc.first ? 0 : fact(p0Options, p0Options-(pc.first-templeWinThreatened)) / fact(pc.first-templeWinThreatened);
+					U64 p1Combinations = fact(23-pc.first, 23-pc.first-pc.second) / fact(pc.second);
+					rowSize = p0Combinations * p1Combinations;
+				}
+			}
+
+			cb(pieceCnt_kingsIndex, rowSize);
+		}
+	}
+}
+
+
+
 
 
 void testIndexing(const CardsInfo& cards);
