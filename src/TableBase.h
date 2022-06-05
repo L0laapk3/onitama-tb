@@ -31,8 +31,13 @@ public:
 		return &mem.data()[refs[i]];
 	}
 
+	void initiateCompress(U64 sections);
 	void partialCompress(U64 section);
+	void cleanUpCompress();
+	
+	void initiateDecompress(U64 sections);
 	void partialDecompress(U64 section);
+	void cleanUpDecompress();
 };
 extern U64 totalDecompressions;
 extern U64 totalLoads;

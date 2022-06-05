@@ -11,11 +11,16 @@ constexpr LZ4F_preferences_t LZ4Prefs {
 
 
 template <U16 TB_MEN, bool STORE_WIN>
+void RefRowWrapper<TB_MEN, STORE_WIN>::initiateCompress(U64 sections) {
+
+}
+
+template <U16 TB_MEN, bool STORE_WIN>
 void RefRowWrapper<TB_MEN, STORE_WIN>::partialCompress(U64 section) {
 
 }
 template <U16 TB_MEN, bool STORE_WIN>
-void RefRowWrapper<TB_MEN, STORE_WIN>::partialDecompress(U64 section) {
+void RefRowWrapper<TB_MEN, STORE_WIN>::cleanUpCompress() {
 
 }
 
@@ -49,6 +54,22 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::partialDecompress(U64 section) {
 
 U64 totalLoads = 0;
 U64 totalDecompressions = 0;
+
+
+template <U16 TB_MEN, bool STORE_WIN>
+void RefRowWrapper<TB_MEN, STORE_WIN>::initiateDecompress(U64 sections) {
+
+}
+
+template <U16 TB_MEN, bool STORE_WIN>
+void RefRowWrapper<TB_MEN, STORE_WIN>::partialDecompress(U64 section) {
+
+}
+template <U16 TB_MEN, bool STORE_WIN>
+void RefRowWrapper<TB_MEN, STORE_WIN>::cleanUpDecompress() {
+
+}
+
 
 // template <U16 TB_MEN, bool STORE_WIN>
 // void RefRowWrapper<TB_MEN, STORE_WIN>::decompress(TableBase<TB_MEN, STORE_WIN>& tb, U16 cardI) {
