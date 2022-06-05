@@ -28,10 +28,9 @@ int main(int, char**) {
 			// f.write(reinterpret_cast<char*>(tbBinary.data()), tbBinary.size());
 			// f.close();
 		}
-		std::promise<void>().get_future().wait(); // sleep forever
     } else {
 
-		U64 smallestTB = (U64)-1, largestTB = 0;
+		U64 smallestTB = -1ULL, largestTB = 0;
 		std::array<U32, 5> smallestIndexes, largestIndexes;
 		iterateCardCombinations([&](const CardsInfo& cards, const std::array<U32, 5>& cardsIndexes) {
 			U64 totalRows = 0;
@@ -59,4 +58,7 @@ int main(int, char**) {
 		std::cout << "largest tb size (" << largestTB * sizeof(U64) / 1024 / 1024 << "MB): ";
 		std::cout << largestIndexes[0] << ' ' << largestIndexes[1] << ' ' << largestIndexes[2] << ' ' << largestIndexes[3] << ' ' << largestIndexes[4] << std::endl;
 	}
+
+	
+	// std::promise<void>().get_future().wait(); // sleep forever
 }

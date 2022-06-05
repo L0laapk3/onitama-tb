@@ -8,6 +8,7 @@
 #include <vector>
 #include <atomic>
 #include <memory>
+#include <functional>
 
 // the tablebase describes boards with player 0 to move.
 // if player 1 is to move, use boardToIndex<true> which flips the board
@@ -24,17 +25,14 @@ public:
 	std::vector<std::atomic<U64>> mem;
 	std::vector<unsigned char> memComp;
 
-	std::atomic<bool> isCompressed = true;
-	std::atomic<bool> isBusy = false;
+	bool isCompressed = true;
 
     std::atomic<U64>* operator [](int i) {
-		assert(!isCompressed);
 		return &mem.data()[refs[i]];
 	}
 
-	void compress(TableBase<TB_MEN, STORE_WIN>& tb);
-	void decompress(TableBase<TB_MEN, STORE_WIN>& tb, U16 cardI);
-	void allocateDecompressed(U64 size, TableBase<TB_MEN, STORE_WIN>& tb, U16 cardI);
+	void partialCompress(U64 section);
+	void partialDecompress(U64 section);
 };
 extern U64 totalDecompressions;
 extern U64 totalLoads;
@@ -47,6 +45,10 @@ struct TableBase {
     RefRowWrapper<TB_MEN, STORE_WIN>& operator [](int i) {
 		return refTable[i];
 	}
+	
+	long long determineUnloads(U8 cardI, long long mem_remaining, std::function<void(RefRowWrapper<TB_MEN, STORE_WIN>& row)> cb);
+	template<U8 numRows>
+	long long determineUnloads(U8 nextLoadCardI, std::array<U8, numRows> rowsI, long long mem_remaining, std::function<void(RefRowWrapper<TB_MEN, STORE_WIN>& row)> cb);
 
 	U64 cnt_0;
 	U64 cnt;
