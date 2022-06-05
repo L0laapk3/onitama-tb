@@ -21,21 +21,21 @@ constexpr U64 CHUNK_SIZE = PIECECOUNTMULT<TB_MEN>; // a divisor of PIECECOUNTMUL
 template<U16 TB_MEN, bool STORE_WIN, int depth>
 void singleDepthPass(const CardsInfo& cards, U16 cardI, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified);
 template<U16 TB_MEN, bool STORE_WIN>
-void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified, std::atomic<U64>& threadsDone, std::atomic<U64>& threadsStart, U64 threadI) {
+void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified, std::atomic<U64>& threadsCompress, std::atomic<U64>& threadsPass, U64 threadI) {
 	U64 depth = 2;
 	U8 cardI = 0;
 
 	while (true) {
 		
-		threadsDone++;	// clear that finish registered
-		threadsDone.notify_all();
+		threadsCompress++;	// clear that finish registered
+		threadsCompress.notify_all();
 		while (true) {
-			U64 threadsDoneRead = threadsDone;
-			if (threadsDoneRead == (-1ULL) / 2) // wait for tb is finished
+			U64 threadsCompressRead = threadsCompress;
+			if (threadsCompressRead == (-1ULL) / 2) // wait for tb is finished
 				return;
-			if (threadsDoneRead == 0) // wait for done to be cleared
+			if (threadsCompressRead == 0) // wait for done to be cleared
 				break;
-			threadsDone.wait(threadsDoneRead);
+			threadsCompress.wait(threadsCompressRead);
 		}
 
 		tb.determineUnloads(cardI, tb.memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
@@ -55,13 +55,13 @@ void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std:
 			}
 		}
 		
-		threadsStart++;	// clear that finish registered
-		threadsStart.notify_all();
+		threadsPass++;	// clear that finish registered
+		threadsPass.notify_all();
 		while (true) {
-			U64 threadsStartRead = threadsStart;
-			if (threadsStartRead == 0) // wait for next tb iteration
+			U64 threadsPassRead = threadsPass;
+			if (threadsPassRead == 0) // wait for next tb iteration
 				break;
-			threadsStart.wait(threadsStartRead);
+			threadsPass.wait(threadsPassRead);
 		}
 
 		if (depth == 2)
@@ -83,7 +83,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 
 	auto tb = std::make_unique<TableBase<TB_MEN, STORE_WIN>>();
 
-	tb->memory_remaining = 20'000'000;
+	tb->memory_remaining = 1'000'000'000;
 	
 	std::cout << "jump table size: " << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / sizeof(void*) << " entries (" << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / 1024 << "KB)" << std::endl;
 
@@ -107,6 +107,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 
 			
 		try {
+			cardTb.memComp = std::vector<std::vector<unsigned char>>(numThreads);
 			// TODO: compress others
 			cardTb.mem = std::vector<std::atomic<U64>>(rows);
 			cardTb.isCompressed = false;
@@ -141,16 +142,16 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 	auto beginTime = beginLoopTime;
 	bool modified = false;
 	std::atomic<U64> chunkCounter = 0;
-	std::atomic<U64> threadsDone = 0, threadsStart = 0;
+	std::atomic<U64> threadsCompress = 0, threadsPass = 0;
 
 	std::vector<std::thread> threads(numThreads);
 	for (U64 i = 0; i < numThreads; i++)
-		threads[i] = std::thread(&singleThread<TB_MEN, STORE_WIN>, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified), std::ref(threadsDone), std::ref(threadsStart), i);
+		threads[i] = std::thread(&singleThread<TB_MEN, STORE_WIN>, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified), std::ref(threadsCompress), std::ref(threadsPass), i);
 
 	while (true) {
 		{
 			tb->determineUnloads(cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
-				row.initiateCompress(numThreads);
+				row.initiateCompress();
 			});
 			U8 invCardI = CARDS_INVERT[cardI];
 			for (U8 decompressCardI : std::array<U8, 5>{
@@ -161,29 +162,25 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 				CARDS_SWAP[invCardI][0][1],
 			}) {
 				auto& row = tb->refTable[decompressCardI];
-				row.initiateDecompress(numThreads);
+				if (row.isCompressed) {
+					// std::cout << "initiate decompress" << std::endl;
+					row.initiateDecompress();
+				}
 			}
 		}
 
-		threadsDone -= numThreads; // notify next iteration
-		threadsDone.notify_all();
-
+		threadsCompress -= numThreads; // notify next iteration
+		threadsCompress.notify_all();
 		// threads are executing compression
 
 
 		while (true) {
-			U64 threadsStartRead = threadsStart;
-			if (threadsStartRead == numThreads)
+			U64 threadsPassRead = threadsPass;
+			if (threadsPassRead == numThreads)
 				break;
-			threadsStart.wait(threadsStartRead);
+			threadsPass.wait(threadsPassRead);
 		}
-
 		// threads are done executing compression
-
-		threadsStart -= numThreads;
-		threadsStart.notify_all();
-
-		// threads are now executing main step
 		
 		{
 			tb->memory_remaining = tb->determineUnloads(cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
@@ -198,50 +195,54 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 				CARDS_SWAP[invCardI][0][1],
 			}) {
 				auto& row = tb->refTable[decompressCardI];
-				row.cleanUpDecompress();
+				if (row.isCompressed)
+					row.cleanUpDecompress();
 			}
 		}
 
-		//numThreads = 1;
+		threadsPass -= numThreads;
+		threadsPass.notify_all();
+		// threads are now executing main step
+
 		while (true) {
-			U64 threadsDoneRead = threadsDone;
-			if (threadsDoneRead == numThreads)
+			U64 threadsCompressRead = threadsCompress;
+			if (threadsCompressRead == numThreads)
 				break;
-			threadsDone.wait(threadsDoneRead);
+			threadsCompress.wait(threadsCompressRead);
 		}
 		// threads are done executing main step
 
-		if (++cardI == CARDSMULT) {
-			const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
-			totalTime += time;
+		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
+		totalTime += time;
 
-			U64 cnt = tb->cnt_0;
+		U64 cnt = tb->cnt_0;
 #ifdef COUNT_BOARDS
-			for (auto& entry : tb->mem)
-				cnt += count_resolved(entry);
-			cnt -= totalBoards;
-			totalBoards += cnt;
+		for (auto& entry : tb->mem)
+			cnt += count_resolved(entry);
+		cnt -= totalBoards;
+		totalBoards += cnt;
 #endif
+		if (++cardI == CARDSMULT) {
+
 			if (!modified) {
-				threadsDone = (-1ULL) / 2; // notify tb is finished
-				threadsDone.notify_all();
+				threadsCompress = (-1ULL) / 2; // notify tb is finished
+				threadsCompress.notify_all();
 				break;
 			}
-
-#ifdef COUNT_BOARDS
-			printf("iter %3llu: %11llu boards in %.3fs\n", depth, cnt, time);
-#else
-			printf("iter %3llu in %.3fs\n", depth, time);
-#endif
 
 			modified = false;
 			cardI = 0;
 			depth++;
 			
 			// std::cout << depth << ' ' << invCardI << std::endl;
-
-			beginTime = std::chrono::steady_clock::now();
 		}
+
+		#ifdef COUNT_BOARDS
+					printf("iter %3llu-%2u: %11llu boards in %.3fs\n", depth, cardI, cnt, time);
+		#else
+					printf("iter %3llu-%2u in %.3fs\n", depth, cardI, time);
+		#endif
+		beginTime = std::chrono::steady_clock::now();
 
 
 		// std::cout << (U64)invCardI << ' ' << (U64)CARDS_SWAP[cardI][1][0] << ' ' << (U64)CARDS_SWAP[cardI][1][1] << ' ' << (U64)CARDS_SWAP[cardI][0][0] << ' ' << (U64)CARDS_SWAP[cardI][0][1] << std::endl;

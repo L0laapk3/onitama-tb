@@ -23,7 +23,7 @@ public:
 	typedef std::array<U32, PIECECOUNTMULT<TB_MEN> * KINGSMULT + 1> RefRow;
 	RefRow refs;
 	std::vector<std::atomic<U64>> mem;
-	std::vector<unsigned char> memComp;
+	std::vector<std::vector<unsigned char>> memComp;
 
 	bool isCompressed = true;
 
@@ -31,16 +31,14 @@ public:
 		return &mem.data()[refs[i]];
 	}
 
-	void initiateCompress(U64 sections);
+	void initiateCompress();
 	void partialCompress(U64 section);
 	void cleanUpCompress();
 	
-	void initiateDecompress(U64 sections);
+	void initiateDecompress();
 	void partialDecompress(U64 section);
 	void cleanUpDecompress();
 };
-extern U64 totalDecompressions;
-extern U64 totalLoads;
 
 template <U16 TB_MEN, bool STORE_WIN>
 struct TableBase {
