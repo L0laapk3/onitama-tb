@@ -21,18 +21,55 @@ constexpr U64 CHUNK_SIZE = PIECECOUNTMULT; // a divisor of PIECECOUNTMULT * KING
 
 template<int depth>
 void singleDepthPass(const CardsInfo& cards, U16 cardI, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified);
+void singleThread(const CardsInfo& cards, TableBase& tb, std::atomic<U64>& chunkCounter, bool& modified, std::atomic<U64>& threadsDone, std::atomic<U64>& threadsStart) {
+	U64 depth = 2;
+	U16 cardI = 0;
+
+	while (true) {
+		if (depth == 2)
+			singleDepthPass<2>(cards, cardI, tb, chunkCounter, modified);
+		else
+			singleDepthPass<3>(cards, cardI, tb, chunkCounter, modified);
+
+		threadsDone++; // mark that it is done
+		threadsDone.notify_all();
+		while (true) {
+			U64 threadsDoneRead = threadsDone;
+			if (threadsDoneRead == -1ULL) // wait for tb is finished
+				return;
+			if (threadsDoneRead == 0) // wait for done to be cleared
+				break;
+			threadsDone.wait(threadsDoneRead);
+		}
+		
+		threadsStart++;	// clear that finish registered
+		threadsStart.notify_all();
+		while (true) {
+			U64 threadsStartRead = threadsStart;
+			if (threadsStartRead == 0) // wait for next tb iteration
+				break;
+			threadsStart.wait(threadsStartRead);
+		}
+
+		if (++cardI == CARDSMULT) {
+			cardI = 0;
+			depth++;
+		}
+	}
+}
+
 
 std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 
 	auto tb = std::make_unique<TableBase>();
 
-	tb->memory_remaining = 20'000'000;
+	tb->memory_remaining = 1'000'000'000;
 	
 	std::cout << "jump table size: " << sizeof(TableBase::RefTable) / sizeof(void*) << " entries (" << sizeof(TableBase::RefTable) / 1024 << "KB)" << std::endl;
 
 	U64 totalRows = 0, totalSize = 0;
 	tb->cnt_0 = 0;
-	for (U64 cardI = CARDSMULT; cardI--> 0; ) {
+	for (U64 cardI = CARDSMULT; cardI--> 0; ) { //TODO
 		RefRowWrapper& cardTb = (*tb)[cardI];
 		auto permutation = CARDS_PERMUTATIONS[cardI];
 		const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
@@ -78,70 +115,105 @@ std::unique_ptr<TableBase> generateTB(const CardsInfo& cards) {
 	std::vector<std::thread> threads(numThreads);
 
 	U64 depth = 2;
+	U16 invCardI = 0;
 	U64 totalBoards = 0;
 	float totalTime = 0;
 	auto beginLoopTime = std::chrono::steady_clock::now();
+	auto beginTime = beginLoopTime;
+	bool modified = false;
+	std::atomic<U64> chunkCounter = 0;
+	std::atomic<U64> threadsDone = 0, threadsStart = 0;
+
+	U64 cardI = CARDS_INVERT[invCardI];
+
+	(*tb)[invCardI].decompress(*tb, invCardI);
+	(*tb)[CARDS_SWAP[cardI][1][0]].decompress(*tb, invCardI);
+	(*tb)[CARDS_SWAP[cardI][1][1]].decompress(*tb, invCardI);
+	(*tb)[CARDS_SWAP[cardI][0][0]].decompress(*tb, invCardI);
+	(*tb)[CARDS_SWAP[cardI][0][1]].decompress(*tb, invCardI);
+
+	for (U64 i = 0; i < numThreads; i++)
+		threads[i] = std::thread(&singleThread, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified), std::ref(threadsDone), std::ref(threadsStart));
+
 	while (true) {
-		auto beginTime = std::chrono::steady_clock::now();
-
-		bool modified = false;
-
-		void (*targetFn)(const CardsInfo&, U16, TableBase&, std::atomic<U64>&, bool&);
-		if (depth == 2) targetFn = &singleDepthPass<2>;
-		// else if (depth == 3) targetFn = &singleDepthPass<3>;
-		else            targetFn = &singleDepthPass<3>;
-
-		for (U16 invCardI = 0; invCardI < CARDSMULT; invCardI++) {
-			// std::cout << depth << ' ' << invCardI << std::endl;
-			U64 cardI = CARDS_INVERT[invCardI];
-
-			(*tb)[invCardI].decompress(*tb, invCardI);
-			(*tb)[CARDS_SWAP[cardI][1][0]].decompress(*tb, invCardI);
-			(*tb)[CARDS_SWAP[cardI][1][1]].decompress(*tb, invCardI);
-			(*tb)[CARDS_SWAP[cardI][0][0]].decompress(*tb, invCardI);
-			(*tb)[CARDS_SWAP[cardI][0][1]].decompress(*tb, invCardI);
-
-			assert(!(*tb)[invCardI].isCompressed);
-			assert(!(*tb)[CARDS_SWAP[cardI][1][0]].isCompressed);
-			assert(!(*tb)[CARDS_SWAP[cardI][1][1]].isCompressed);
-			assert(!(*tb)[CARDS_SWAP[cardI][0][0]].isCompressed);
-			assert(!(*tb)[CARDS_SWAP[cardI][0][1]].isCompressed);
 
 
-			// std::cout << (U64)invCardI << ' ' << (U64)CARDS_SWAP[cardI][1][0] << ' ' << (U64)CARDS_SWAP[cardI][1][1] << ' ' << (U64)CARDS_SWAP[cardI][0][0] << ' ' << (U64)CARDS_SWAP[cardI][0][1] << std::endl;
 			
-			std::atomic<U64> chunkCounter = 0;
-			for (U64 i = 0; i < numThreads; i++)
-				threads[i] = std::thread(targetFn, std::cref(cards), invCardI, std::ref(*tb), std::ref(chunkCounter), std::ref(modified));
-			for (auto& thread : threads)
-				thread.join();
-				
-			// (*tb)[invCardI].compress();
-			// (*tb)[CARDS_SWAP[cardI][1][0]].compress();
-			// (*tb)[CARDS_SWAP[cardI][1][1]].compress();
-			// (*tb)[CARDS_SWAP[cardI][0][0]].compress();
-			// (*tb)[CARDS_SWAP[cardI][0][1]].compress();
-		}
 		//numThreads = 1;
+		while (true) {
+			U64 threadsDoneRead = threadsDone;
+			if (threadsDoneRead == numThreads)
+				break;
+			threadsDone.wait(threadsDoneRead);
+		}
 
-		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
-		totalTime += time;
-		U64 cnt = tb->cnt_0;
+		if (++invCardI == CARDSMULT) {
+			const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
+			totalTime += time;
+
+			U64 cnt = tb->cnt_0;
 #ifdef COUNT_BOARDS
-		for (auto& entry : tb->mem)
-			cnt += count_resolved(entry);
-		cnt -= totalBoards;
-		totalBoards += cnt;
+			for (auto& entry : tb->mem)
+				cnt += count_resolved(entry);
+			cnt -= totalBoards;
+			totalBoards += cnt;
 #endif
-		if (!modified)
-			break;
+			if (!modified) {
+				threadsDone = -1ULL; // notify tb is finished
+				threadsDone.notify_all();
+				break;
+			}
+
 #ifdef COUNT_BOARDS
 			printf("iter %3llu: %11llu boards in %.3fs\n", depth, cnt, time);
 #else
 			printf("iter %3llu in %.3fs\n", depth, time);
 #endif
-		depth++;
+
+			modified = false;
+			invCardI = 0;
+			depth++;
+			
+			// std::cout << depth << ' ' << invCardI << std::endl;
+
+			beginTime = std::chrono::steady_clock::now();
+		}
+
+		cardI = CARDS_INVERT[invCardI];
+
+		(*tb)[invCardI].decompress(*tb, invCardI);
+		(*tb)[CARDS_SWAP[cardI][1][0]].decompress(*tb, invCardI);
+		(*tb)[CARDS_SWAP[cardI][1][1]].decompress(*tb, invCardI);
+		(*tb)[CARDS_SWAP[cardI][0][0]].decompress(*tb, invCardI);
+		(*tb)[CARDS_SWAP[cardI][0][1]].decompress(*tb, invCardI);
+
+		assert(!(*tb)[invCardI].isCompressed);
+		assert(!(*tb)[CARDS_SWAP[cardI][1][0]].isCompressed);
+		assert(!(*tb)[CARDS_SWAP[cardI][1][1]].isCompressed);
+		assert(!(*tb)[CARDS_SWAP[cardI][0][0]].isCompressed);
+		assert(!(*tb)[CARDS_SWAP[cardI][0][1]].isCompressed);
+
+
+		// std::cout << (U64)invCardI << ' ' << (U64)CARDS_SWAP[cardI][1][0] << ' ' << (U64)CARDS_SWAP[cardI][1][1] << ' ' << (U64)CARDS_SWAP[cardI][0][0] << ' ' << (U64)CARDS_SWAP[cardI][0][1] << std::endl;
+
+
+		chunkCounter = 0;
+		threadsDone -= numThreads; // notify next iteration
+		threadsDone.notify_all();
+		threadsStart -= numThreads;
+		threadsStart.notify_all();
+
+		while (true) {
+			U64 threadsStartRead = threadsStart;
+			if (threadsStartRead == 0)
+				break;
+			threadsStart.wait(threadsStartRead);
+		}
 	}
+	
+	for (auto& thread : threads)
+		thread.join();
+		
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
 	tb->cnt = tb->cnt_0;
 	for (U64 i = CARDSMULT; i--> 0; ) {

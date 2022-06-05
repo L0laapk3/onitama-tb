@@ -25,7 +25,10 @@ public:
 	std::atomic<bool> isCompressed = true;
 	std::atomic<bool> isBusy = false;
 
-    std::atomic<U64>* operator [](int i) { return &mem.data()[refs[i]]; }
+    std::atomic<U64>* operator [](int i) {
+		assert(!isCompressed);
+		return &mem.data()[refs[i]];
+	}
 
 	void compress(TableBase& tb);
 	void decompress(TableBase& tb, U16 cardI);
