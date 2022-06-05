@@ -4,7 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-
+#include <future>
 
 
 int main(int, char**) {
@@ -19,17 +19,16 @@ int main(int, char**) {
         testIndexing(CARDS);
     } else if (0) {
 		exhaustiveIndexTest(CARDS);
-	} else if (0) {
-        auto tb = generateTB<6, false>(CARDS);
-		// tb->testCompression();
 	} else if (1) {
-        auto tb = generateTB<6, false>(CARDS);
+        auto tb = generateTB<8, false>(CARDS);
+		// tb->testCompression();
 		if (0) {
 			// auto tbBinary = tb->compress();
 			// std::ofstream f(std::to_string(TB_MEN) + "men.bin", std::ios::binary);
 			// f.write(reinterpret_cast<char*>(tbBinary.data()), tbBinary.size());
 			// f.close();
 		}
+		std::promise<void>().get_future().wait(); // sleep forever
     } else {
 
 		U64 smallestTB = (U64)-1, largestTB = 0;

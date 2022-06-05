@@ -2,7 +2,6 @@
 #include "Board.h"
 #include "Index.hpp"
 #include "Card.hpp"
-#include "Config.h"
 
 #include <vector>
 #include <atomic>

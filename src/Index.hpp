@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Config.h"
-
 #include "Types.h"
 #include "Helper.h"
 #include "Board.h"
@@ -18,6 +16,8 @@
 #include <functional>
 
 
+// use PDEP for everything except ZEN 1 & 2
+#define USE_PDEP
 //#define NO_INLINE_INDEX
 
 #if defined(NO_INLINE_INDEX) || !defined(NDEBUG)
@@ -200,7 +200,7 @@ constexpr void GENERATE_PAWN_TABLE_PAWN(U32 bb, int remaining, std::array<U32, s
 }
 template<int pawns, bool invert>
 constexpr auto GENERATE_PAWN_TABLE() {
-	const U64 size = fact(23, 23-pawns) / fact(pawns);
+	constexpr U64 size = fact(23, 23-pawns) / fact(pawns);
 	std::array<U32, size> a{};
 	GENERATE_PAWN_TABLE_PAWN<pawns, size, invert>(0, pawns, a, { 0 }, 0);
     return a;
@@ -299,12 +299,8 @@ U32 INLINE_INDEX_FN boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
 	}
 
 	U32 r = 0;
-	#if TB_MEN >= 10
-		r += MULTABLE<4>[ip3 - 3];
-	#endif
-	#if TB_MEN >= 8
-		r += MULTABLE<3>[ip2 - 2];
-	#endif
+	if (TB_MEN >= 10) r += MULTABLE<4>[ip3 - 3];
+	if (TB_MEN >= 8) r += MULTABLE<3>[ip2 - 2];
 	r += MULTABLE<2>[ip1 - 1];
 	r += ip0;
 	return r;
@@ -355,10 +351,13 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	im.rp1 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc1, 9 + pp0cnt); // possible positions: 23 - pp0cnt
 	U32 rp0 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // possible positions: 25 - popcnt(mask)
 
-	return {
+	BoardIndex bi{
 		.pieceCnt_kingsIndex = rpc + rk,
 		.pieceIndex = rp0 * im.mul + im.rp1 - offset,
 	};
+	assert(bi.pieceCnt_kingsIndex < PIECECOUNTMULT<TB_MEN> * KINGSMULT);
+	// assert(bi.pieceIndex < PIECES10MULT<TB_MEN>[pp0cnt][pp1cnt]);
+	return bi;
 }
 template <U16 TB_MEN, bool invert>
 BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMoveBoard) {

@@ -2,7 +2,6 @@
 
 #include "Board.h"
 #include "Index.hpp"
-#include "Config.h"
 #include "Card.hpp"
 
 #include <array>
