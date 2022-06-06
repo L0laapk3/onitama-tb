@@ -5,7 +5,7 @@
 
 
 constexpr LZ4F_preferences_t LZ4Prefs {
-	.compressionLevel = 1,
+	.compressionLevel = 0,
 };
 
 
@@ -17,14 +17,10 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::initiateCompress() {
 	U64 compressedSectionSize = memComp.size() * LZ4F_compressFrameBound(decompressedSectionSize, &LZ4Prefs);  // TODO: do in small blocks instead of one big block
 	for (auto& memCompSection : memComp)
 		memCompSection = std::vector<unsigned char>(compressedSectionSize);
-		
-	mem_reference = std::vector<U64>(mem.size());
-	for (U64 i = 0; i < mem.size(); i++)
-		mem_reference[i] = mem[i];
 }
 
 template <U16 TB_MEN, bool STORE_WIN>
-void RefRowWrapper<TB_MEN, STORE_WIN>::partialCompress(U64 section) {
+void RefRowWrapper<TB_MEN, STORE_WIN>::partialCompress(int section) {
 	U64 startI = mem.size() * section / memComp.size();
 	U64 stopI = mem.size() * (section + 1) / memComp.size();
 	auto& memCompSection = memComp[section];
@@ -41,11 +37,6 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::partialCompress(U64 section) {
 	memCompSection.shrink_to_fit();
 
 	partialDecompress(section);
-	for (U64 i = startI; i < stopI; i++)
-		if (mem[i] != mem_reference[i]) {
-			std::cerr << "i: " << i << " mem[i] (" << std::hex << mem[i] << ") != mem_reference[i] (" << mem_reference[i] << ")" << std::dec << std::endl;
-			exit(1);
-		}
 }
 template <U16 TB_MEN, bool STORE_WIN>
 void RefRowWrapper<TB_MEN, STORE_WIN>::cleanUpCompress() {
@@ -62,7 +53,7 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::initiateDecompress() {
 }
 
 template <U16 TB_MEN, bool STORE_WIN>
-void RefRowWrapper<TB_MEN, STORE_WIN>::partialDecompress(U64 section) {
+void RefRowWrapper<TB_MEN, STORE_WIN>::partialDecompress(int section) {
 	
 
 	U64 startI = mem.size() * section / memComp.size();
@@ -98,98 +89,7 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::cleanUpDecompress() {
 	isCompressed = false;
 	for (auto& memCompSection : memComp)
 		memCompSection.~vector<unsigned char>();
-
-	for (U64 i = 0; i < mem_reference.size(); i++)
-		if (mem[i] != mem_reference[i]) {
-			std::cerr << "I: " << i << " mem[i] (" << std::hex << mem[i] << ") != mem_reference[i] (" << mem_reference[i] << ")" << std::dec << std::endl;
-			exit(1);
-		}	
-
-	// for (U64 i = 0; i < mem.size(); i++)
-	// 	mem[i] = mem_reference[i];
 }
-
-
-// template <U16 TB_MEN, bool STORE_WIN>
-// void RefRowWrapper<TB_MEN, STORE_WIN>::decompress(TableBase<TB_MEN, STORE_WIN>& tb, U16 cardI) {
-// 	totalLoads++;
-// 	if(!isCompressed)
-// 		return;
-
-// 	LZ4F_decompressionContext_t ctx;
-// 	auto error = LZ4F_createDecompressionContext(&ctx, LZ4F_VERSION);
-// 	if (error) {
-// 		std::cerr << "LZ4F_createDecompressionContext failed: " << LZ4F_getErrorName(error) << std::endl;
-// 		exit(1);
-// 	}
-
-// 	isBusy = true;
-
-// 	size_t outBuf = refs.back() * sizeof(U64);
-// 	size_t inBuf = memComp.size() * sizeof(char);
-	
-// 	allocateDecompressed<TB_MEN, STORE_WIN>(refs.back(), tb, cardI);
-
-// 	std::atomic<U64>* dstPtr = mem.data();
-// 	unsigned char* srcPtr = memComp.data();
-
-// 	size_t result = LZ4F_decompress(ctx,
-// 		dstPtr, &outBuf,
-// 		srcPtr, &inBuf,
-// 		nullptr);
-// 	if (LZ4F_isError(result)) {
-// 		std::cerr << "LZ4F_decompress failed: " << LZ4F_getErrorName(result) << std::endl;
-// 		exit(1);
-// 	}
-
-// 	LZ4F_freeDecompressionContext(ctx);
-
-// 	isCompressed = false;
-// 	tb.memory_remaining += memComp.size() * sizeof(unsigned char);
-// 	memComp.~vector<unsigned char>();
-// 	isBusy = false;
-
-// 	totalDecompressions++;
-// }
-
-// template <U16 TB_MEN, bool STORE_WIN>
-// void RefRowWrapper<TB_MEN, STORE_WIN>::allocateDecompressed(U64 size, TableBase<TB_MEN, STORE_WIN>& tb, U16 currentCardI) {
-// 	tb.memory_remaining -= size * sizeof(U64);
-// 	while (tb.memory_remaining < 0) {
-// 		// find uncompressed row that will be used last
-// 		RefRowWrapper<TB_MEN, STORE_WIN>* longestUnusedRow = nullptr;
-// 		U64 longestUnusedRowSize = 0;
-// 		U16 longestWithoutUsage = 0;
-// 		for (U64 rowI = 0; rowI < CARDSMULT; rowI++) {
-// 			auto& row = tb.refTable[rowI];
-// 			if (row.isCompressed)
-// 				continue;
-// 			for (U16 i = 0; i < CARDSMULT; i++) {
-// 				U16 cardI = (currentCardI + i) % CARDSMULT;
-// 				U64 invCardI = CARDS_INVERT[cardI];
-// 				if (rowI == cardI ||
-// 					rowI == CARDS_SWAP[invCardI][1][0] ||
-// 					rowI == CARDS_SWAP[invCardI][1][1] ||
-// 					rowI == CARDS_SWAP[invCardI][0][0] ||
-// 					rowI == CARDS_SWAP[invCardI][0][1]) {
-// 					if (i > longestWithoutUsage) {
-// 						longestUnusedRow = &row;
-// 						longestWithoutUsage = i;
-// 					}
-// 					break;
-// 				}
-// 			}
-// 		}
-		
-// 		if (longestUnusedRow == nullptr)
-// 			break;
-// 			// throw std::runtime_error("Not enough memory");
-
-// 		longestUnusedRow->compress(tb);
-// 	}
-
-// 	mem = std::vector<std::atomic<U64>>(size);
-// }
 
 
 

@@ -2,6 +2,7 @@
 #include "Board.h"
 #include "Index.hpp"
 #include "Card.hpp"
+#include "Sync.hpp"
 
 #include <vector>
 #include <atomic>
@@ -18,38 +19,29 @@
 template <U16 TB_MEN>
 constexpr U64 CHUNK_SIZE = PIECECOUNTMULT<TB_MEN>; // a divisor of PIECECOUNTMULT * KINGSMULT is used
 
+struct ThreadSyncs {
+	Sync compress;
+	Sync decompress;
+	Sync step;
+};
+
 template<U16 TB_MEN, bool STORE_WIN, int depth>
 void singleDepthPass(const CardsInfo& cards, U8 cardI, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified);
 template<U16 TB_MEN, bool STORE_WIN>
-void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified, std::atomic<U64>& threadsCompress, std::atomic<U64>& threadsDecompress, std::atomic<U64>& threadsPass, U64 threadI) {
+void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified, ThreadSyncs& syncs, U64 threadI) {
 	U64 depth = 2;
 	U8 cardI = 0;
 
 	while (true) {
 		
-		threadsCompress++;	// clear that finish registered
-		threadsCompress.notify_all();
-		while (true) {
-			U64 threadsCompressRead = threadsCompress;
-			if (threadsCompressRead == (-1ULL) / 2) // wait for tb is finished
-				return;
-			if (threadsCompressRead == 0) // wait for done to be cleared
-				break;
-			threadsCompress.wait(threadsCompressRead);
-		}
+		if (syncs.compress.slaveNotifyWait<true>())
+			return;
 
 		tb.determineUnloads(cardI, tb.memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
 			row.partialCompress(threadI);
 		});
 
-		threadsDecompress++;	// clear that finish registered
-		threadsDecompress.notify_all();
-		while (true) {
-			U64 threadsDecompressRead = threadsDecompress;
-			if (threadsDecompressRead == 0) // wait for next tb iteration
-				break;
-			threadsDecompress.wait(threadsDecompressRead);
-		}
+		syncs.decompress.slaveNotifyWait();
 
 		U8 invCardI = CARDS_INVERT[cardI];
 		for (U8 decompressCardI : std::array<U8, 5>{
@@ -65,14 +57,7 @@ void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std:
 			}
 		}
 		
-		threadsPass++;	// clear that finish registered
-		threadsPass.notify_all();
-		while (true) {
-			U64 threadsPassRead = threadsPass;
-			if (threadsPassRead == 0) // wait for next tb iteration
-				break;
-			threadsPass.wait(threadsPassRead);
-		}
+		syncs.step.slaveNotifyWait();
 
 		if (depth == 2)
 			singleDepthPass<TB_MEN, STORE_WIN, 2>(cards, cardI, tb, chunkCounter, modified);
@@ -93,11 +78,11 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 	U64 totalLoads = 0;
 	U64 totalDecompressions = 0;
 	
-	U64 numThreads = std::clamp<U64>(std::thread::hardware_concurrency(), 1, 1024);
+	int numThreads = std::clamp<int>(std::thread::hardware_concurrency(), 1, 1024);
 
 	auto tb = std::make_unique<TableBase<TB_MEN, STORE_WIN>>();
 
-	tb->memory_remaining = 30'000'000;
+	tb->memory_remaining = 1'000'000'000;
 	
 	std::cout << "jump table size: " << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / sizeof(void*) << " entries (" << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / 1024 << "KB)" << std::endl;
 
@@ -120,16 +105,11 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		totalSize += size;
 
 			
-		try {
-			cardTb.memComp = std::vector<std::vector<unsigned char>>(numThreads);
-			// TODO: compress others
-			cardTb.mem = std::vector<std::atomic<U64>>(rows);
-			tb->memory_remaining -= rows * sizeof(U64);
-			cardTb.isCompressed = false;
-		} catch (const std::bad_alloc& e) {
-			std::cout << e.what() << " (not enough memory?)" << std::endl;
-			throw e;
-		}
+		cardTb.memComp = std::vector<std::vector<unsigned char>>(numThreads);
+		cardTb.mem = std::vector<std::atomic<U64>>(rows);
+		tb->memory_remaining -= rows * sizeof(U64);
+		cardTb.isCompressed = false;
+			
 		U32 passedRowsCount = 0;
 		// set final bits to resolved.
 		iterateTBCounts<TB_MEN>(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
@@ -157,11 +137,11 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 	auto beginTime = beginLoopTime;
 	bool modified = false;
 	std::atomic<U64> chunkCounter = 0;
-	std::atomic<U64> threadsCompress = 0,  threadsDecompress = 0, threadsPass = 0;
+	ThreadSyncs syncs;
 
 	std::vector<std::thread> threads(numThreads);
-	for (U64 i = 0; i < numThreads; i++)
-		threads[i] = std::thread(&singleThread<TB_MEN, STORE_WIN>, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified), std::ref(threadsCompress), std::ref(threadsDecompress), std::ref(threadsPass), i);
+	for (int i = 0; i < numThreads; i++)
+		threads[i] = std::thread(&singleThread<TB_MEN, STORE_WIN>, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified), std::ref(syncs), i);
 
 	while (true) {
 		{
@@ -170,19 +150,8 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 			});
 		}
 
-		threadsCompress -= numThreads; // notify next iteration
-		threadsCompress.notify_all();
-
-		// threads are executing compression
-
-
-		while (true) {
-			U64 threadsDecompressRead = threadsDecompress;
-			if (threadsDecompressRead == numThreads)
-				break;
-			threadsDecompress.wait(threadsDecompressRead);
-		}
-		// threads are done executing compression
+		syncs.compress.masterNotifyDuringWait(numThreads);
+		syncs.decompress.masterWaitBeforeNotify(numThreads);
 		
 		{
 			tb->memory_remaining = tb->determineUnloads(cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
@@ -205,18 +174,8 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 			}
 		}
 		
-		threadsDecompress -= numThreads; // notify next iteration
-		threadsDecompress.notify_all();
-		// threads are executing decompression
-
-
-		while (true) {
-			U64 threadsPassRead = threadsPass;
-			if (threadsPassRead == numThreads)
-				break;
-			threadsPass.wait(threadsPassRead);
-		}
-		// threads are done executing decompression
+		syncs.decompress.masterNotifyAfterWait();
+		syncs.step.masterWaitBeforeNotify(numThreads);
 
 		{
 			U8 invCardI = CARDS_INVERT[cardI];
@@ -243,17 +202,8 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		})
 			assert(!tb->refTable[decompressCardI].isCompressed);
 
-		threadsPass -= numThreads;
-		threadsPass.notify_all();
-		// threads are now executing main step
-
-		while (true) {
-			U64 threadsCompressRead = threadsCompress;
-			if (threadsCompressRead == numThreads)
-				break;
-			threadsCompress.wait(threadsCompressRead);
-		}
-		// threads are done executing main step
+		syncs.step.masterNotifyAfterWait();
+		syncs.compress.masterWaitBeforeNotify(numThreads);
 
 		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
 		totalTime += time;
@@ -268,8 +218,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		if (++cardI == CARDSMULT) {
 
 			if (!modified) {
-				threadsCompress = (-1ULL) / 2; // notify tb is finished
-				threadsCompress.notify_all();
+				syncs.compress.masterNotifyAfterWait(true);
 				break;
 			}
 
@@ -300,17 +249,14 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 	tb->cnt = tb->cnt_0;
 	for (U64 i = CARDSMULT; i--> 0; ) {
 		auto& row = tb->refTable[i];
-		// TODO: compress others
-		// row.decompress(*tb, i);
 		if (row.isCompressed) {
 			row.initiateDecompress();
-			for (U64 j = 0; j < numThreads; j++)
+			for (int j = 0; j < numThreads; j++)
 				row.partialDecompress(j);
 			row.cleanUpDecompress();
 		}
 		for (auto& entry : row.mem)
 			tb->cnt += countResolved<STORE_WIN>(entry);
-		// row.compress();
 	}
 	printf("found %llu boards in %.3fs/%.3fs\n", tb->cnt, totalTime, totalInclusiveTime);
 
