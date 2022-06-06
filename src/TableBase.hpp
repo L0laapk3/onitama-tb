@@ -136,6 +136,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 	auto beginLoopTime = std::chrono::steady_clock::now();
 	auto beginTime = beginLoopTime;
 	bool modified = false;
+	int lastModified = 0;
 	std::atomic<U64> chunkCounter = 0;
 	ThreadSyncs syncs;
 
@@ -144,11 +145,12 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		threads[i] = std::thread(&singleThread<TB_MEN, STORE_WIN>, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified), std::ref(syncs), i);
 
 	while (true) {
-		{
-			tb->determineUnloads(cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
-				row.initiateCompress();
-			});
-		}
+
+		bool needsAnyCompressions = false;
+		tb->determineUnloads(cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
+			needsAnyCompressions = true;
+			row.initiateCompress();
+		});
 
 		syncs.compress.masterNotifyDuringWait(numThreads);
 		syncs.decompress.masterWaitBeforeNotify(numThreads);
@@ -215,25 +217,53 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		cnt -= totalBoards;
 		totalBoards += cnt;
 #endif
-		if (++cardI == CARDSMULT) {
 
-			if (!modified) {
-				syncs.compress.masterNotifyAfterWait(true);
-				break;
-			}
 
-			modified = false;
-			cardI = 0;
-			depth++;
-			
-			// std::cout << depth << ' ' << invCardI << std::endl;
+		for (U8 decompressCardI : std::array<U8, 3>{
+			cardI,
+			CARDS_SWAP[invCardI][1][0],
+			CARDS_SWAP[invCardI][1][1],
+		})
+			tb->refTable[decompressCardI].usesSinceModified++;
+		
+		if (modified) {
+			for (U8 decompressCardI : std::array<U8, 3>{
+				cardI,
+				CARDS_SWAP[invCardI][0][0],
+				CARDS_SWAP[invCardI][0][1],
+			})
+				tb->refTable[decompressCardI].usesSinceModified = 0;
+			lastModified = 0;
 		}
-
 		#ifdef COUNT_BOARDS
 					printf("iter %3llu-%2u: %11llu boards in %.3fs\n", depth, cardI, cnt, time);
 		#else
 					printf("iter %3llu-%2u in %.3fs\n", depth, cardI, time);
 		#endif
+
+		while(lastModified++ < CARDSMULT) {
+
+			if (++cardI == CARDSMULT) {
+				cardI = 0;
+				depth++;
+			}
+
+			for (U8 decompressCardI : std::array<U8, 3>{
+				cardI,
+				CARDS_SWAP[invCardI][1][0],
+				CARDS_SWAP[invCardI][1][1],
+			})
+				if (tb->refTable[decompressCardI].usesSinceModified < 3)
+					goto foundCardCombination;
+			printf("skip %3llu-%2u\n", depth, cardI);
+		}
+		// no card combinations have been modified, quit
+		syncs.compress.masterNotifyAfterWait(true);
+		break;
+	foundCardCombination:
+
+		modified = false;
+
 		beginTime = std::chrono::steady_clock::now();
 
 

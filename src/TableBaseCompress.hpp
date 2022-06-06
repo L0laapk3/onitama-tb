@@ -5,7 +5,7 @@
 
 
 constexpr LZ4F_preferences_t LZ4Prefs {
-	.compressionLevel = 0,
+	.compressionLevel = 1,
 };
 
 

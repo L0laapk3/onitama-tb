@@ -25,6 +25,7 @@ public:
 	std::vector<std::atomic<U64>> mem;
 	std::vector<std::vector<unsigned char>> memComp;
 
+	U8 usesSinceModified = 0;
 	bool isCompressed = true;
 
     std::atomic<U64>* operator [](int i) {
