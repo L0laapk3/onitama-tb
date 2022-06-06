@@ -23,29 +23,29 @@ struct ThreadSyncs {
 	Sync compress;
 	Sync decompress;
 	Sync step;
+	U64 depth = 2;
+	U8 cardI = 0;
 };
 
 template<U16 TB_MEN, bool STORE_WIN, int depth>
 void singleDepthPass(const CardsInfo& cards, U8 cardI, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified);
 template<U16 TB_MEN, bool STORE_WIN>
 void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified, ThreadSyncs& syncs, U64 threadI) {
-	U64 depth = 2;
-	U8 cardI = 0;
 
 	while (true) {
 		
 		if (syncs.compress.slaveNotifyWait<true>())
 			return;
 
-		tb.determineUnloads(cardI, tb.memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
+		tb.determineUnloads(syncs.cardI, tb.memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
 			row.partialCompress(threadI);
 		});
 
 		syncs.decompress.slaveNotifyWait();
 
-		U8 invCardI = CARDS_INVERT[cardI];
+		U8 invCardI = CARDS_INVERT[syncs.cardI];
 		for (U8 decompressCardI : std::array<U8, 5>{
-			cardI,
+			syncs.cardI,
 			CARDS_SWAP[invCardI][1][0],
 			CARDS_SWAP[invCardI][1][1],
 			CARDS_SWAP[invCardI][0][0],
@@ -59,15 +59,10 @@ void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std:
 		
 		syncs.step.slaveNotifyWait();
 
-		if (depth == 2)
-			singleDepthPass<TB_MEN, STORE_WIN, 2>(cards, cardI, tb, chunkCounter, modified);
+		if (syncs.depth == 2)
+			singleDepthPass<TB_MEN, STORE_WIN, 2>(cards, syncs.cardI, tb, chunkCounter, modified);
 		else
-			singleDepthPass<TB_MEN, STORE_WIN, 3>(cards, cardI, tb, chunkCounter, modified);
-		
-		if (++cardI == CARDSMULT) {
-			cardI = 0;
-			depth++;
-		}
+			singleDepthPass<TB_MEN, STORE_WIN, 3>(cards, syncs.cardI, tb, chunkCounter, modified);
 	}
 }
 
@@ -82,7 +77,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 
 	auto tb = std::make_unique<TableBase<TB_MEN, STORE_WIN>>();
 
-	tb->memory_remaining = 1'000'000'000;
+	tb->memory_remaining = 20'000'000;
 	
 	std::cout << "jump table size: " << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / sizeof(void*) << " entries (" << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / 1024 << "KB)" << std::endl;
 
@@ -136,8 +131,6 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 
 
 
-	U64 depth = 2;
-	U8 cardI = 0;
 	U64 totalBoards = 0;
 	float totalTime = 0;
 	auto beginLoopTime = std::chrono::steady_clock::now();
@@ -154,7 +147,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 	while (true) {
 
 		bool needsAnyCompressions = false;
-		tb->determineUnloads(cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
+		tb->determineUnloads(syncs.cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
 			needsAnyCompressions = true;
 			row.initiateCompress();
 		});
@@ -163,12 +156,12 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		syncs.decompress.masterWaitBeforeNotify(numThreads);
 		
 		{
-			tb->memory_remaining = tb->determineUnloads(cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
+			tb->memory_remaining = tb->determineUnloads(syncs.cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
 				row.cleanUpCompress();
 			});
-			U8 invCardI = CARDS_INVERT[cardI];
+			U8 invCardI = CARDS_INVERT[syncs.cardI];
 			for (U8 decompressCardI : std::array<U8, 5>{
-				cardI,
+				syncs.cardI,
 				CARDS_SWAP[invCardI][1][0],
 				CARDS_SWAP[invCardI][1][1],
 				CARDS_SWAP[invCardI][0][0],
@@ -187,9 +180,9 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		syncs.step.masterWaitBeforeNotify(numThreads);
 
 		{
-			U8 invCardI = CARDS_INVERT[cardI];
+			U8 invCardI = CARDS_INVERT[syncs.cardI];
 			for (U8 decompressCardI : std::array<U8, 5>{
-				cardI,
+				syncs.cardI,
 				CARDS_SWAP[invCardI][1][0],
 				CARDS_SWAP[invCardI][1][1],
 				CARDS_SWAP[invCardI][0][0],
@@ -201,9 +194,9 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 			}
 		}
 		
-		U8 invCardI = CARDS_INVERT[cardI];
+		U8 invCardI = CARDS_INVERT[syncs.cardI];
 		for (U8 decompressCardI : std::array<U8, 5>{
-			cardI,
+			syncs.cardI,
 			CARDS_SWAP[invCardI][1][0],
 			CARDS_SWAP[invCardI][1][1],
 			CARDS_SWAP[invCardI][0][0],
@@ -227,7 +220,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 
 
 		for (U8 decompressCardI : std::array<U8, 3>{
-			cardI,
+			syncs.cardI,
 			CARDS_SWAP[invCardI][1][0],
 			CARDS_SWAP[invCardI][1][1],
 		})
@@ -235,7 +228,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		
 		if (modified) {
 			for (U8 decompressCardI : std::array<U8, 3>{
-				cardI,
+				syncs.cardI,
 				CARDS_SWAP[invCardI][0][0],
 				CARDS_SWAP[invCardI][0][1],
 			})
@@ -243,26 +236,26 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 			lastModified = 0;
 		}
 		#ifdef COUNT_BOARDS
-					printf("iter %3llu-%2u: %11llu boards in %.3fs\n", depth, cardI, cnt, time);
+					printf("iter %3llu-%2u: %11llu boards in %.3fs\n", syncs.depth, syncs.cardI, cnt, time);
 		#else
-					printf("iter %3llu-%2u in %.3fs\n", depth, cardI, time);
+					printf("iter %3llu-%2u in %.3fs\n", syncs.depth, syncs.cardI, time);
 		#endif
 
 		while(lastModified++ < CARDSMULT) {
 
-			if (++cardI == CARDSMULT) {
-				cardI = 0;
-				depth++;
+			if (++syncs.cardI == CARDSMULT) {
+				syncs.cardI = 0;
+				syncs.depth++;
 			}
 
 			for (U8 decompressCardI : std::array<U8, 3>{
-				cardI,
+				syncs.cardI,
 				CARDS_SWAP[invCardI][1][0],
 				CARDS_SWAP[invCardI][1][1],
 			})
 				if (tb->refTable[decompressCardI].usesSinceModified < 3)
 					goto foundCardCombination;
-			printf("skip %3llu-%2u\n", depth, cardI);
+			printf("skip %3llu-%2u\n", syncs.depth, syncs.cardI);
 		}
 		// no card combinations have been modified, quit
 		syncs.compress.masterNotifyAfterWait(true);
@@ -296,7 +289,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		for (auto& entry : row.mem)
 			tb->cnt += countResolved<STORE_WIN>(entry);
 
-		row.mem.~vector<std::atomic<U64>>(); // TODO: not this :P
+		// row.mem.~vector<std::atomic<U64>>(); // TODO: not this :P
 	}
 	printf("found %llu boards in %.3fs/%.3fs\n", tb->cnt, totalTime, totalInclusiveTime);
 
