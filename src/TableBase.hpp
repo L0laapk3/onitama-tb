@@ -88,7 +88,8 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 
 	U64 totalRows = 0, totalSize = 0;
 	tb->cnt_0 = 0;
-	for (U64 cardI = CARDSMULT; cardI--> 0; ) { //TODO
+	for (U8 i = 0; i < CARDSMULT; i++) {
+		U8 cardI = UNLOAD_ORDER[0][i];
 		RefRowWrapper<TB_MEN, STORE_WIN>& cardTb = (*tb)[cardI];
 		auto permutation = CARDS_PERMUTATIONS[cardI];
 		const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
@@ -105,6 +106,12 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		totalSize += size;
 
 			
+		tb->memory_remaining = tb->determineUnloads(cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
+			row.initiateCompress();
+			for (int j = 0; j < numThreads; j++) // TODO: thread
+				row.partialCompress(j);
+			row.cleanUpCompress();
+		});
 		cardTb.memComp = std::vector<std::vector<unsigned char>>(numThreads);
 		cardTb.mem = std::vector<std::atomic<U64>>(rows);
 		tb->memory_remaining -= rows * sizeof(U64);
@@ -278,15 +285,18 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
 	tb->cnt = tb->cnt_0;
 	for (U64 i = CARDSMULT; i--> 0; ) {
-		auto& row = tb->refTable[i];
+		U8 cardI = UNLOAD_ORDER[0][i];
+		auto& row = tb->refTable[cardI];
 		if (row.isCompressed) {
 			row.initiateDecompress();
-			for (int j = 0; j < numThreads; j++)
+			for (int j = 0; j < numThreads; j++) // TODO: thread
 				row.partialDecompress(j);
 			row.cleanUpDecompress();
 		}
 		for (auto& entry : row.mem)
 			tb->cnt += countResolved<STORE_WIN>(entry);
+
+		row.mem.~vector<std::atomic<U64>>(); // TODO: not this :P
 	}
 	printf("found %llu boards in %.3fs/%.3fs\n", tb->cnt, totalTime, totalInclusiveTime);
 
