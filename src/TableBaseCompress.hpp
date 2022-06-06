@@ -12,10 +12,15 @@ constexpr LZ4F_preferences_t LZ4Prefs {
 
 template <U16 TB_MEN, bool STORE_WIN>
 void RefRowWrapper<TB_MEN, STORE_WIN>::initiateCompress() {
-	U64 decompressedSectionSize = (mem.size() * sizeof(U64) + memComp.size() - 1) / memComp.size();
+	assert(!isCompressed);
+	U64 decompressedSectionSize = ((mem.size() + memComp.size() - 1) / memComp.size()) * sizeof(U64);
 	U64 compressedSectionSize = memComp.size() * LZ4F_compressFrameBound(decompressedSectionSize, &LZ4Prefs);  // TODO: do in small blocks instead of one big block
 	for (auto& memCompSection : memComp)
 		memCompSection = std::vector<unsigned char>(compressedSectionSize);
+		
+	mem_reference = std::vector<U64>(mem.size());
+	for (U64 i = 0; i < mem.size(); i++)
+		mem_reference[i] = mem[i];
 }
 
 template <U16 TB_MEN, bool STORE_WIN>
@@ -34,6 +39,13 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::partialCompress(U64 section) {
 	}
 	memCompSection.resize(compressedSize);
 	memCompSection.shrink_to_fit();
+
+	partialDecompress(section);
+	for (U64 i = startI; i < stopI; i++)
+		if (mem[i] != mem_reference[i]) {
+			std::cerr << "i: " << i << " mem[i] (" << std::hex << mem[i] << ") != mem_reference[i] (" << mem_reference[i] << ")" << std::dec << std::endl;
+			exit(1);
+		}
 }
 template <U16 TB_MEN, bool STORE_WIN>
 void RefRowWrapper<TB_MEN, STORE_WIN>::cleanUpCompress() {
@@ -42,13 +54,11 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::cleanUpCompress() {
 }
 
 
-U64 totalLoads = 0;
-U64 totalDecompressions = 0;
-
 
 template <U16 TB_MEN, bool STORE_WIN>
 void RefRowWrapper<TB_MEN, STORE_WIN>::initiateDecompress() {
 	mem = std::vector<std::atomic<U64>>(refs.back());
+	assert(isCompressed);
 }
 
 template <U16 TB_MEN, bool STORE_WIN>
@@ -88,6 +98,15 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::cleanUpDecompress() {
 	isCompressed = false;
 	for (auto& memCompSection : memComp)
 		memCompSection.~vector<unsigned char>();
+
+	for (U64 i = 0; i < mem_reference.size(); i++)
+		if (mem[i] != mem_reference[i]) {
+			std::cerr << "I: " << i << " mem[i] (" << std::hex << mem[i] << ") != mem_reference[i] (" << mem_reference[i] << ")" << std::dec << std::endl;
+			exit(1);
+		}	
+
+	// for (U64 i = 0; i < mem.size(); i++)
+	// 	mem[i] = mem_reference[i];
 }
 
 
