@@ -5,7 +5,7 @@
 
 
 constexpr LZ4F_preferences_t LZ4Prefs {
-	.compressionLevel = 1,
+	.compressionLevel = 9,
 };
 
 
@@ -110,8 +110,11 @@ template<U8 numRows>
 long long TableBase<TB_MEN, STORE_WIN>::determineUnloads(U8 nextLoadCardI, std::array<U8, numRows> rowsI, long long mem_remaining, std::function<void(RefRowWrapper<TB_MEN, STORE_WIN>& row)> cb) {
 	for (U8 rowI : rowsI) {
 		auto& row = refTable[rowI];
-		if (row.isCompressed)
-			mem_remaining -= row.refs.back() * sizeof(U64) - row.memComp.size() * sizeof(unsigned char);
+		if (row.isCompressed) {
+			mem_remaining -= row.refs.back() * sizeof(U64);
+			for (auto& memCompSect : row.memComp)
+				mem_remaining += memCompSect.size() * sizeof(unsigned char);
+		}
 	}
 
 	if (mem_remaining < 0)
@@ -120,7 +123,9 @@ long long TableBase<TB_MEN, STORE_WIN>::determineUnloads(U8 nextLoadCardI, std::
 			auto& row = refTable[rowI];
 			if (!row.isCompressed) {
 				cb(row);
-				mem_remaining += row.refs.back() * sizeof(U64) - row.memComp.size() * sizeof(unsigned char);
+				mem_remaining += row.refs.back() * sizeof(U64);
+				for (auto& memCompSect : row.memComp)
+					mem_remaining -= memCompSect.size() * sizeof(unsigned char);
 				if (mem_remaining >= 0)
 					break;
 			}
