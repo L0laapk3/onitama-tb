@@ -5,13 +5,13 @@
 
 
 constexpr LZ4F_preferences_t LZ4Prefs {
-	.compressionLevel = 9,
+	.compressionLevel = 0,
 };
 
 
 
 template <U16 TB_MEN, bool STORE_WIN>
-void RefRowWrapper<TB_MEN, STORE_WIN>::initiateCompress() {
+void RefRowWrapper<TB_MEN, STORE_WIN>::initiateCompress(TableBase<TB_MEN, STORE_WIN>& tb) {
 	assert(!isCompressed);
 	U64 decompressedSectionSize = ((mem.size() + memComp.size() - 1) / memComp.size()) * sizeof(U64);
 	U64 compressedSectionSize = memComp.size() * LZ4F_compressFrameBound(decompressedSectionSize, &LZ4Prefs);  // TODO: do in small blocks instead of one big block
@@ -39,15 +39,18 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::partialCompress(int section) {
 	partialDecompress(section);
 }
 template <U16 TB_MEN, bool STORE_WIN>
-void RefRowWrapper<TB_MEN, STORE_WIN>::cleanUpCompress() {
+void RefRowWrapper<TB_MEN, STORE_WIN>::finishCompress(TableBase<TB_MEN, STORE_WIN>& tb) {
 	isCompressed = true;
+	for (auto& memCompSection : memComp)
+		tb.memory_remaining -= memCompSection.size() * sizeof(unsigned char);
+	tb.memory_remaining += mem.size() * sizeof(U64);
 	mem.~vector<std::atomic<U64>>();
 }
 
 
 
 template <U16 TB_MEN, bool STORE_WIN>
-void RefRowWrapper<TB_MEN, STORE_WIN>::initiateDecompress() {
+void RefRowWrapper<TB_MEN, STORE_WIN>::initiateDecompress(TableBase<TB_MEN, STORE_WIN>& tb) {
 	mem = std::vector<std::atomic<U64>>(refs.back());
 	assert(isCompressed);
 }
@@ -85,16 +88,19 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::partialDecompress(int section) {
 	LZ4F_freeDecompressionContext(ctx);
 }
 template <U16 TB_MEN, bool STORE_WIN>
-void RefRowWrapper<TB_MEN, STORE_WIN>::cleanUpDecompress() {
+void RefRowWrapper<TB_MEN, STORE_WIN>::finishDecompress(TableBase<TB_MEN, STORE_WIN>& tb) {
 	isCompressed = false;
-	for (auto& memCompSection : memComp)
+	tb.memory_remaining -= refs.back() * sizeof(U64);
+	for (auto& memCompSection : memComp) {
+		tb.memory_remaining += memCompSection.size() * sizeof(unsigned char);
 		memCompSection.~vector<unsigned char>();
+	}
 }
 
 
 
 template<U16 TB_MEN, bool STORE_WIN>
-long long TableBase<TB_MEN, STORE_WIN>::determineUnloads(U8 cardI, long long mem_remaining, std::function<void(RefRowWrapper<TB_MEN, STORE_WIN>& row)> cb) {
+void TableBase<TB_MEN, STORE_WIN>::determineUnloads(U8 cardI, std::function<void(RefRowWrapper<TB_MEN, STORE_WIN>& row)> cb) {
 	U8 invCardI = CARDS_INVERT[cardI];
 	return determineUnloads<5>(cardI, {
 		cardI,
@@ -102,35 +108,32 @@ long long TableBase<TB_MEN, STORE_WIN>::determineUnloads(U8 cardI, long long mem
 		CARDS_SWAP[invCardI][1][1],
 		CARDS_SWAP[invCardI][0][0],
 		CARDS_SWAP[invCardI][0][1],
-	}, mem_remaining, cb);
+	}, cb);
 }
 
 template<U16 TB_MEN, bool STORE_WIN>
 template<U8 numRows>
-long long TableBase<TB_MEN, STORE_WIN>::determineUnloads(U8 nextLoadCardI, std::array<U8, numRows> rowsI, long long mem_remaining, std::function<void(RefRowWrapper<TB_MEN, STORE_WIN>& row)> cb) {
+void TableBase<TB_MEN, STORE_WIN>::determineUnloads(U8 nextLoadCardI, std::array<U8, numRows> rowsI, std::function<void(RefRowWrapper<TB_MEN, STORE_WIN>& row)> cb) {
+	long long extra_memory_needed = 0;
 	for (U8 rowI : rowsI) {
 		auto& row = refTable[rowI];
 		if (row.isCompressed) {
-			mem_remaining -= row.refs.back() * sizeof(U64);
+			extra_memory_needed += row.refs.back() * sizeof(U64);
 			for (auto& memCompSect : row.memComp)
-				mem_remaining += memCompSect.size() * sizeof(unsigned char);
+				extra_memory_needed -= memCompSect.size() * sizeof(unsigned char);
 		}
 	}
 
-	if (mem_remaining < 0)
+	if (memory_remaining < extra_memory_needed)
 		for (U8 i = 0; i < 30 - numRows; i++) {
 			auto& rowI = UNLOAD_ORDER[nextLoadCardI][i];
 			auto& row = refTable[rowI];
 			if (!row.isCompressed) {
-				cb(row);
-				mem_remaining += row.refs.back() * sizeof(U64);
-				for (auto& memCompSect : row.memComp)
-					mem_remaining -= memCompSect.size() * sizeof(unsigned char);
-				if (mem_remaining >= 0)
+				cb(row); // this is expected to call finishCompress and update memory_remaining
+				if (memory_remaining >= 0)
 					break;
 			}
 		}
-	return mem_remaining;
 }
 
 

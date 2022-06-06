@@ -36,7 +36,7 @@ void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std:
 		if (comm.depth == 0)
 			break;
 
-		tb.determineUnloads(comm.cardI, tb.memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
+		tb.determineUnloads(comm.cardI, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
 			row.partialCompress(threadI);
 			comm.sync.slaveNotifyWait();
 		});
@@ -97,11 +97,11 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		totalSize += size;
 
 			
-		tb->memory_remaining = tb->determineUnloads(cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
-			row.initiateCompress();
+		tb->determineUnloads(cardI, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
+			row.initiateCompress(*tb);
 			for (int j = 0; j < numThreads; j++) // TODO: thread
 				row.partialCompress(j);
-			row.cleanUpCompress();
+			row.finishCompress(*tb);
 		});
 		cardTb.memComp = std::vector<std::vector<unsigned char>>(numThreads);
 		cardTb.mem = std::vector<std::atomic<U64>>(rows);
@@ -144,13 +144,11 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 	
 	while (true) {
 
-		bool needsAnyCompressions = false;
-		tb->memory_remaining = tb->determineUnloads(comm.cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
-			needsAnyCompressions = true;
-			row.initiateCompress();
+		tb->determineUnloads(comm.cardI, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
+			row.initiateCompress(*tb);
 			comm.sync.masterNotify(numThreads);
 			comm.sync.masterWait(numThreads);
-			row.cleanUpCompress();
+			row.finishCompress(*tb);
 		});
 
 		U8 invCardI = CARDS_INVERT[comm.cardI];
@@ -165,10 +163,10 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 			totalLoads++;
 			if (row.isCompressed) {
 				totalDecompressions++;
-				row.initiateDecompress();
+				row.initiateDecompress(*tb);
 				comm.sync.masterNotify(numThreads);
 				comm.sync.masterWait(numThreads);
-				row.cleanUpDecompress();
+				row.finishDecompress(*tb);
 			}
 		}
 		
@@ -259,10 +257,10 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		U8 cardI = UNLOAD_ORDER[0][i];
 		auto& row = tb->refTable[cardI];
 		if (row.isCompressed) {
-			row.initiateDecompress();
+			row.initiateDecompress(*tb);
 			for (int j = 0; j < numThreads; j++) // TODO: thread
 				row.partialDecompress(j);
-			row.cleanUpDecompress();
+			row.finishDecompress(*tb);
 		}
 		for (auto& entry : row.mem)
 			tb->cnt += countResolved<STORE_WIN>(entry);

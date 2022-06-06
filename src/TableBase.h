@@ -32,13 +32,13 @@ public:
 		return &mem.data()[refs[i]];
 	}
 
-	void initiateCompress();
+	void initiateCompress(TableBase<TB_MEN, STORE_WIN>& tb);
 	void partialCompress(int section);
-	void cleanUpCompress();
+	void finishCompress(TableBase<TB_MEN, STORE_WIN>& tb);
 	
-	void initiateDecompress();
+	void initiateDecompress(TableBase<TB_MEN, STORE_WIN>& tb);
 	void partialDecompress(int section);
-	void cleanUpDecompress();
+	void finishDecompress(TableBase<TB_MEN, STORE_WIN>& tb);
 };
 
 template <U16 TB_MEN, bool STORE_WIN>
@@ -50,9 +50,9 @@ struct TableBase {
 		return refTable[i];
 	}
 	
-	long long determineUnloads(U8 cardI, long long mem_remaining, std::function<void(RefRowWrapper<TB_MEN, STORE_WIN>& row)> cb);
+	void determineUnloads(U8 cardI, std::function<void(RefRowWrapper<TB_MEN, STORE_WIN>& row)> cb);
 	template<U8 numRows>
-	long long determineUnloads(U8 nextLoadCardI, std::array<U8, numRows> rowsI, long long mem_remaining, std::function<void(RefRowWrapper<TB_MEN, STORE_WIN>& row)> cb);
+	void determineUnloads(U8 nextLoadCardI, std::array<U8, numRows> rowsI, std::function<void(RefRowWrapper<TB_MEN, STORE_WIN>& row)> cb);
 
 	U64 cnt_0;
 	U64 cnt;
