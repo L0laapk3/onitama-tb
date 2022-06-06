@@ -2,7 +2,7 @@
 #include "Board.h"
 #include "Index.hpp"
 #include "Card.hpp"
-#include "Sync.hpp"
+#include "Sync.h"
 
 #include <vector>
 #include <atomic>
@@ -19,10 +19,8 @@
 template <U16 TB_MEN>
 constexpr U64 CHUNK_SIZE = PIECECOUNTMULT<TB_MEN>; // a divisor of PIECECOUNTMULT * KINGSMULT is used
 
-struct ThreadSyncs {
-	Sync compress;
-	Sync decompress;
-	Sync step;
+struct ThreadObj {
+	Sync sync;
 	U64 depth = 2;
 	U8 cardI = 0;
 };
@@ -30,22 +28,21 @@ struct ThreadSyncs {
 template<U16 TB_MEN, bool STORE_WIN, int depth>
 void singleDepthPass(const CardsInfo& cards, U8 cardI, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified);
 template<U16 TB_MEN, bool STORE_WIN>
-void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified, ThreadSyncs& syncs, U64 threadI) {
+void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified, ThreadObj& comm, U64 threadI) {
 
 	while (true) {
-		
-		if (syncs.compress.slaveNotifyWait<true>())
-			return;
+	
+		comm.sync.slaveNotifyWait();
+		if (comm.depth == 0)
+			break;
 
-		tb.determineUnloads(syncs.cardI, tb.memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
+		tb.determineUnloads(comm.cardI, tb.memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
 			row.partialCompress(threadI);
+			comm.sync.slaveNotifyWait();
 		});
-
-		syncs.decompress.slaveNotifyWait();
-
-		U8 invCardI = CARDS_INVERT[syncs.cardI];
+		U8 invCardI = CARDS_INVERT[comm.cardI];
 		for (U8 decompressCardI : std::array<U8, 5>{
-			syncs.cardI,
+			comm.cardI,
 			CARDS_SWAP[invCardI][1][0],
 			CARDS_SWAP[invCardI][1][1],
 			CARDS_SWAP[invCardI][0][0],
@@ -54,15 +51,14 @@ void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std:
 			auto& row = tb[decompressCardI];
 			if (row.isCompressed) {
 				row.partialDecompress(threadI);
+				comm.sync.slaveNotifyWait();
 			}
 		}
-		
-		syncs.step.slaveNotifyWait();
 
-		if (syncs.depth == 2)
-			singleDepthPass<TB_MEN, STORE_WIN, 2>(cards, syncs.cardI, tb, chunkCounter, modified);
+		if (comm.depth == 2)
+			singleDepthPass<TB_MEN, STORE_WIN, 2>(cards, comm.cardI, tb, chunkCounter, modified);
 		else
-			singleDepthPass<TB_MEN, STORE_WIN, 3>(cards, syncs.cardI, tb, chunkCounter, modified);
+			singleDepthPass<TB_MEN, STORE_WIN, 3>(cards, comm.cardI, tb, chunkCounter, modified);
 	}
 }
 
@@ -77,7 +73,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 
 	auto tb = std::make_unique<TableBase<TB_MEN, STORE_WIN>>();
 
-	tb->memory_remaining = 20'000'000;
+	tb->memory_remaining = 200'000'000;
 	
 	std::cout << "jump table size: " << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / sizeof(void*) << " entries (" << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / 1024 << "KB)" << std::endl;
 
@@ -138,65 +134,46 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 	bool modified = false;
 	int lastModified = 0;
 	std::atomic<U64> chunkCounter = 0;
-	ThreadSyncs syncs;
+	ThreadObj comm;
 
 	std::vector<std::thread> threads(numThreads);
 	for (int i = 0; i < numThreads; i++)
-		threads[i] = std::thread(&singleThread<TB_MEN, STORE_WIN>, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified), std::ref(syncs), i);
+		threads[i] = std::thread(&singleThread<TB_MEN, STORE_WIN>, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified), std::ref(comm), i);
 
+	comm.sync.masterWait(numThreads);
+	
 	while (true) {
 
 		bool needsAnyCompressions = false;
-		tb->determineUnloads(syncs.cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
+		tb->memory_remaining = tb->determineUnloads(comm.cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
 			needsAnyCompressions = true;
 			row.initiateCompress();
+			comm.sync.masterNotify(numThreads);
+			comm.sync.masterWait(numThreads);
+			row.cleanUpCompress();
 		});
 
-		syncs.compress.masterNotifyDuringWait(numThreads);
-		syncs.decompress.masterWaitBeforeNotify(numThreads);
-		
-		{
-			tb->memory_remaining = tb->determineUnloads(syncs.cardI, tb->memory_remaining, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
-				row.cleanUpCompress();
-			});
-			U8 invCardI = CARDS_INVERT[syncs.cardI];
-			for (U8 decompressCardI : std::array<U8, 5>{
-				syncs.cardI,
-				CARDS_SWAP[invCardI][1][0],
-				CARDS_SWAP[invCardI][1][1],
-				CARDS_SWAP[invCardI][0][0],
-				CARDS_SWAP[invCardI][0][1],
-			}) {
-				auto& row = tb->refTable[decompressCardI];
-				totalLoads++;
-				if (row.isCompressed) {
-					totalDecompressions++;
-					row.initiateDecompress();
-				}
-			}
-		}
-		
-		syncs.decompress.masterNotifyAfterWait();
-		syncs.step.masterWaitBeforeNotify(numThreads);
-
-		{
-			U8 invCardI = CARDS_INVERT[syncs.cardI];
-			for (U8 decompressCardI : std::array<U8, 5>{
-				syncs.cardI,
-				CARDS_SWAP[invCardI][1][0],
-				CARDS_SWAP[invCardI][1][1],
-				CARDS_SWAP[invCardI][0][0],
-				CARDS_SWAP[invCardI][0][1],
-			}) {
-				auto& row = tb->refTable[decompressCardI];
-				if (row.isCompressed)
-					row.cleanUpDecompress();
-			}
-		}
-		
-		U8 invCardI = CARDS_INVERT[syncs.cardI];
+		U8 invCardI = CARDS_INVERT[comm.cardI];
 		for (U8 decompressCardI : std::array<U8, 5>{
-			syncs.cardI,
+			comm.cardI,
+			CARDS_SWAP[invCardI][1][0],
+			CARDS_SWAP[invCardI][1][1],
+			CARDS_SWAP[invCardI][0][0],
+			CARDS_SWAP[invCardI][0][1],
+		}) {
+			auto& row = tb->refTable[decompressCardI];
+			totalLoads++;
+			if (row.isCompressed) {
+				totalDecompressions++;
+				row.initiateDecompress();
+				comm.sync.masterNotify(numThreads);
+				comm.sync.masterWait(numThreads);
+				row.cleanUpDecompress();
+			}
+		}
+		
+		for (U8 decompressCardI : std::array<U8, 5>{
+			comm.cardI,
 			CARDS_SWAP[invCardI][1][0],
 			CARDS_SWAP[invCardI][1][1],
 			CARDS_SWAP[invCardI][0][0],
@@ -204,8 +181,8 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		})
 			assert(!tb->refTable[decompressCardI].isCompressed);
 
-		syncs.step.masterNotifyAfterWait();
-		syncs.compress.masterWaitBeforeNotify(numThreads);
+		comm.sync.masterNotify(numThreads);
+		comm.sync.masterWait(numThreads);
 
 		const float time = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count()) / 1000000;
 		totalTime += time;
@@ -220,7 +197,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 
 
 		for (U8 decompressCardI : std::array<U8, 3>{
-			syncs.cardI,
+			comm.cardI,
 			CARDS_SWAP[invCardI][1][0],
 			CARDS_SWAP[invCardI][1][1],
 		})
@@ -228,7 +205,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 		
 		if (modified) {
 			for (U8 decompressCardI : std::array<U8, 3>{
-				syncs.cardI,
+				comm.cardI,
 				CARDS_SWAP[invCardI][0][0],
 				CARDS_SWAP[invCardI][0][1],
 			})
@@ -236,29 +213,30 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 			lastModified = 0;
 		}
 		#ifdef COUNT_BOARDS
-					printf("iter %3llu-%2u: %11llu boards in %.3fs\n", syncs.depth, syncs.cardI, cnt, time);
+					printf("iter %3llu-%2u: %11llu boards in %.3fs\n", comm.depth, comm.cardI, cnt, time);
 		#else
-					printf("iter %3llu-%2u in %.3fs\n", syncs.depth, syncs.cardI, time);
+					printf("iter %3llu-%2u in %.3fs\n", comm.depth, comm.cardI, time);
 		#endif
 
 		while(lastModified++ < CARDSMULT) {
 
-			if (++syncs.cardI == CARDSMULT) {
-				syncs.cardI = 0;
-				syncs.depth++;
+			if (++comm.cardI == CARDSMULT) {
+				comm.cardI = 0;
+				comm.depth++;
 			}
 
 			for (U8 decompressCardI : std::array<U8, 3>{
-				syncs.cardI,
+				comm.cardI,
 				CARDS_SWAP[invCardI][1][0],
 				CARDS_SWAP[invCardI][1][1],
 			})
 				if (tb->refTable[decompressCardI].usesSinceModified < 3)
 					goto foundCardCombination;
-			printf("skip %3llu-%2u\n", syncs.depth, syncs.cardI);
+			printf("skip %3llu-%2u\n", comm.depth, comm.cardI);
 		}
 		// no card combinations have been modified, quit
-		syncs.compress.masterNotifyAfterWait(true);
+		comm.depth = 0;
+		comm.sync.masterNotify(numThreads);
 		break;
 	foundCardCombination:
 

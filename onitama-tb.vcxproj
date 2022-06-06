@@ -161,11 +161,13 @@
     <ClCompile Include="src\Card.cpp" />
     <ClCompile Include="src\Index.cpp" />
     <ClCompile Include="src\Main.cpp" />
+    <ClCompile Include="src\Sync.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Board.h" />
     <ClInclude Include="src\Helper.h" />
     <ClInclude Include="src\Index.h" />
+    <ClInclude Include="src\Sync.h" />
     <ClInclude Include="src\TableBase.h" />
     <ClInclude Include="src\TableBase.hpp" />
     <ClInclude Include="src\TableBaseCompress.hpp" />
