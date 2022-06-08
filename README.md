@@ -20,7 +20,7 @@ Since the TB only stores player 1 boards, inverted indexing functions are also p
     The first iterations are also specified to not even perform look-ups in the TB, and otherwise a win in 1 check is performed before look-up. This massively helps alleviate the memory bottleneck.
   - The index function excludes all win in 1's (~65% of total boards).
       - This reduces the 10 men TB requirements from 240GB to 96GB, further reduced 64GB using realtime lz4 compression.
-      - This shifts the bottleneck balance from memory to cpu, and results in significant runtime improvements on powerful CPU's (20% reduction on 12850H 8C/16T 8men).
+      - This shifts the bottleneck balance from memory to cpu, and results in significant runtime improvements on powerful CPU's (20% reduction on 11850H 8C/16T 8men).
 * If only draw info and not win/loss info is desired, this can be generated with half the memory, so 10 men can be done in 32GB (and ~5% less runtime).
   - There are not a lot of draws (~0.01% - ~0.1%), so this massively shrinks down the required storage space for ahead-of-time, making ahead of time generation for all 2348 card sets realistic.
     When all draws are known, a lot of information about forced wins and losses can be implicitely extracted, but experiments are still needed if this is sufficient for perfect gameplay.
