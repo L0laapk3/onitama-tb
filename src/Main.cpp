@@ -20,7 +20,7 @@ int main(int, char**) {
     } else if (0) {
 		exhaustiveIndexTest(CARDS);
 	} else if (1) {
-        auto tb = generateTB<6, false>(CARDS);
+        auto tb = TableBase<6, false>::generate(CARDS, 20'000'000);
 		// tb->testCompression();
 		if (0) {
 			// auto tbBinary = tb->compress();

@@ -69,11 +69,12 @@ struct TableBase {
 	// std::vector<unsigned char> compress();
 	// static std::vector<U64> decompressToIndices(const std::vector<unsigned char>& compressed);
 	// void testCompression();
+
+	
+	static std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generate(const CardsInfo& cards, U64 memory_allowance);
 };
 
 
-template <U16 TB_MEN, bool STORE_WIN>
-std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards);
 
 
 
