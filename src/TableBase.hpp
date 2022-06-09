@@ -134,6 +134,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 	auto beginTime = beginLoopTime;
 	bool modified = false;
 	int lastModified = 0;
+	bool keepCompressed = false;
 	std::atomic<U64> chunkCounter = 0;
 	ThreadObj comm;
 
@@ -170,7 +171,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 				row.initiateDecompress(*tb);
 				comm.sync.masterNotify(numThreads);
 				comm.sync.masterWait(numThreads);
-				row.finishDecompress(*tb, true);
+				row.finishDecompress(*tb, keepCompressed);
 			}
 		}
 		
@@ -216,6 +217,8 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 				row.isChanged = true;
 			}
 			lastModified = 0;
+		} else {
+			keepCompressed = true;
 		}
 		#ifdef COUNT_BOARDS
 					printf("iter %3llu-%2u: %11llu boards in %.3fs\n", comm.depth, comm.cardI, cnt, time);
