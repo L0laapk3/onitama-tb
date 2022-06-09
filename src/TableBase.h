@@ -33,7 +33,9 @@ public:
 	MemCompVec memComp;
 
 	U8 usesSinceModified = 0;
-	bool isCompressed = true;
+	bool isCompressed = false;
+	bool isDecompressed = false;
+	bool isChanged = true;
 
     std::atomic<U64>* operator [](int i) {
 		return &mem.data()[refs[i]];
@@ -45,7 +47,7 @@ public:
 	
 	void initiateDecompress(TableBase<TB_MEN, STORE_WIN>& tb);
 	void partialDecompress(int section);
-	void finishDecompress(TableBase<TB_MEN, STORE_WIN>& tb);
+	void finishDecompress(TableBase<TB_MEN, STORE_WIN>& tb, bool keepCompressedMem);
 };
 
 template <U16 TB_MEN, bool STORE_WIN>

@@ -37,7 +37,8 @@ void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std:
 			break;
 
 		tb.determineUnloads(comm.cardI, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
-			row.partialCompress(threadI);
+			if (row.isChanged || !row.isCompressed)
+				row.partialCompress(threadI);
 			comm.sync.slaveNotifyWait();
 		});
 		U8 invCardI = CARDS_INVERT[comm.cardI];
@@ -49,7 +50,7 @@ void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std:
 			CARDS_SWAP[invCardI][0][1],
 		}) {
 			auto& row = tb[decompressCardI];
-			if (row.isCompressed) {
+			if (!row.isDecompressed) {
 				row.partialDecompress(threadI);
 				comm.sync.slaveNotifyWait();
 			}
@@ -106,7 +107,6 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 		cardTb.memComp = MemCompVec(numThreads);
 		cardTb.mem = MemVec(rows);
 		tb->memory_remaining -= rows * sizeof(U64);
-		cardTb.isCompressed = false;
 			
 		U32 passedRowsCount = 0;
 		// set final bits to resolved.
@@ -120,6 +120,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 			tb->cnt_0 -= countResolved<STORE_WIN>(cardTb.mem[passedRowsCount - 1]);
 		});
 
+		cardTb.isDecompressed = true;
 		cardTb.refs.back() = passedRowsCount;
 	}
 	
@@ -144,11 +145,14 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 	
 	while (true) {
 
+		std::vector<RefRowWrapper<TB_MEN, STORE_WIN>*> compressedRows;
 		tb->determineUnloads(comm.cardI, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
-			row.initiateCompress(*tb);
+			if (row.isChanged || !row.isCompressed)
+				row.initiateCompress(*tb);
 			comm.sync.masterNotify(numThreads);
 			comm.sync.masterWait(numThreads);
 			row.finishCompress(*tb);
+			compressedRows.push_back(&row);
 		});
 
 		U8 invCardI = CARDS_INVERT[comm.cardI];
@@ -161,12 +165,12 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 		}) {
 			auto& row = tb->refTable[decompressCardI];
 			totalLoads++;
-			if (row.isCompressed) {
+			if (!row.isDecompressed) {
 				totalDecompressions++;
 				row.initiateDecompress(*tb);
 				comm.sync.masterNotify(numThreads);
 				comm.sync.masterWait(numThreads);
-				row.finishDecompress(*tb);
+				row.finishDecompress(*tb, true);
 			}
 		}
 		
@@ -177,7 +181,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 			CARDS_SWAP[invCardI][0][0],
 			CARDS_SWAP[invCardI][0][1],
 		})
-			assert(!tb->refTable[decompressCardI].isCompressed);
+			assert(tb->refTable[decompressCardI].isDecompressed);
 
 		comm.sync.masterNotify(numThreads);
 		comm.sync.masterWait(numThreads);
@@ -206,8 +210,11 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 				comm.cardI,
 				CARDS_SWAP[invCardI][0][0],
 				CARDS_SWAP[invCardI][0][1],
-			})
-				tb->refTable[decompressCardI].usesSinceModified = 0;
+			}) {
+				auto& row = tb->refTable[decompressCardI];
+				row.usesSinceModified = 0;
+				row.isChanged = true;
+			}
 			lastModified = 0;
 		}
 		#ifdef COUNT_BOARDS
@@ -256,11 +263,11 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 	for (U64 i = CARDSMULT; i--> 0; ) {
 		U8 cardI = UNLOAD_ORDER[0][i];
 		auto& row = tb->refTable[cardI];
-		if (row.isCompressed) {
+		if (!row.isDecompressed) {
 			row.initiateDecompress(*tb);
 			for (int j = 0; j < numThreads; j++) // TODO: thread
 				row.partialDecompress(j);
-			row.finishDecompress(*tb);
+			row.finishDecompress(*tb, false);
 		}
 		for (auto& entry : row.mem)
 			tb->cnt += countResolved<STORE_WIN>(entry);

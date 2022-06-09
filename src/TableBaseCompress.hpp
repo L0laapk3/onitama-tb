@@ -41,6 +41,7 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::partialCompress(int section) {
 template <U16 TB_MEN, bool STORE_WIN>
 void RefRowWrapper<TB_MEN, STORE_WIN>::finishCompress(TableBase<TB_MEN, STORE_WIN>& tb) {
 	isCompressed = true;
+	isDecompressed = false;
 	for (auto& memCompSection : memComp)
 		tb.memory_remaining -= memCompSection.size() * sizeof(unsigned char);
 	tb.memory_remaining += mem.size() * sizeof(U64);
@@ -53,6 +54,7 @@ template <U16 TB_MEN, bool STORE_WIN>
 void RefRowWrapper<TB_MEN, STORE_WIN>::initiateDecompress(TableBase<TB_MEN, STORE_WIN>& tb) {
 	mem = MemVec(refs.back());
 	assert(isCompressed);
+	isChanged = false;
 }
 
 template <U16 TB_MEN, bool STORE_WIN>
@@ -88,12 +90,15 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::partialDecompress(int section) {
 	LZ4F_freeDecompressionContext(ctx);
 }
 template <U16 TB_MEN, bool STORE_WIN>
-void RefRowWrapper<TB_MEN, STORE_WIN>::finishDecompress(TableBase<TB_MEN, STORE_WIN>& tb) {
-	isCompressed = false;
+void RefRowWrapper<TB_MEN, STORE_WIN>::finishDecompress(TableBase<TB_MEN, STORE_WIN>& tb, bool keepCompressedMem) {
+	if (!keepCompressedMem)
+		isCompressed = false;
+	isDecompressed = true;
 	tb.memory_remaining -= refs.back() * sizeof(U64);
 	for (auto& memCompSection : memComp) {
 		tb.memory_remaining += memCompSection.size() * sizeof(unsigned char);
-		memCompSection.~CompMemRowVec();
+		if (!keepCompressedMem)
+			memCompSection.~CompMemRowVec();
 	}
 }
 
@@ -117,7 +122,7 @@ void TableBase<TB_MEN, STORE_WIN>::determineUnloads(U8 nextLoadCardI, std::array
 	long long extra_memory_needed = 0;
 	for (U8 rowI : rowsI) {
 		auto& row = refTable[rowI];
-		if (row.isCompressed) {
+		if (!row.isDecompressed) {
 			extra_memory_needed += row.refs.back() * sizeof(U64);
 			for (auto& memCompSect : row.memComp)
 				extra_memory_needed -= memCompSect.size() * sizeof(unsigned char);
@@ -128,7 +133,7 @@ void TableBase<TB_MEN, STORE_WIN>::determineUnloads(U8 nextLoadCardI, std::array
 		for (U8 i = 0; i < 30 - numRows; i++) {
 			auto& rowI = UNLOAD_ORDER[nextLoadCardI][i];
 			auto& row = refTable[rowI];
-			if (!row.isCompressed) {
+			if (row.isDecompressed) {
 				cb(row); // this is expected to call finishCompress and update memory_remaining
 				if (memory_remaining >= 0)
 					break;
