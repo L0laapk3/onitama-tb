@@ -5,7 +5,7 @@
 
 
 constexpr LZ4F_preferences_t LZ4Prefs {
-	.compressionLevel = 0,
+	.compressionLevel = 1,
 };
 
 
@@ -16,7 +16,7 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::initiateCompress(TableBase<TB_MEN, STORE_
 	U64 decompressedSectionSize = ((mem.size() + memComp.size() - 1) / memComp.size()) * sizeof(U64);
 	U64 compressedSectionSize = memComp.size() * LZ4F_compressFrameBound(decompressedSectionSize, &LZ4Prefs);  // TODO: do in small blocks instead of one big block
 	for (auto& memCompSection : memComp)
-		memCompSection = std::vector<unsigned char>(compressedSectionSize);
+		memCompSection = CompMemRowVec(compressedSectionSize);
 }
 
 template <U16 TB_MEN, bool STORE_WIN>
@@ -44,14 +44,14 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::finishCompress(TableBase<TB_MEN, STORE_WI
 	for (auto& memCompSection : memComp)
 		tb.memory_remaining -= memCompSection.size() * sizeof(unsigned char);
 	tb.memory_remaining += mem.size() * sizeof(U64);
-	mem.~vector<std::atomic<U64>>();
+	mem.~MemVec();
 }
 
 
 
 template <U16 TB_MEN, bool STORE_WIN>
 void RefRowWrapper<TB_MEN, STORE_WIN>::initiateDecompress(TableBase<TB_MEN, STORE_WIN>& tb) {
-	mem = std::vector<std::atomic<U64>>(refs.back());
+	mem = MemVec(refs.back());
 	assert(isCompressed);
 }
 
@@ -93,7 +93,7 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::finishDecompress(TableBase<TB_MEN, STORE_
 	tb.memory_remaining -= refs.back() * sizeof(U64);
 	for (auto& memCompSection : memComp) {
 		tb.memory_remaining += memCompSection.size() * sizeof(unsigned char);
-		memCompSection.~vector<unsigned char>();
+		memCompSection.~CompMemRowVec();
 	}
 }
 

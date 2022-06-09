@@ -1,3 +1,6 @@
 [submodule "lz4"]
 	path = lz4
 	url = git@github.com:lz4/lz4.git
+[submodule "mimalloc"]
+	path = mimalloc
+	url = git@github.com:microsoft/mimalloc.git

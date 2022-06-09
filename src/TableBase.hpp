@@ -103,8 +103,8 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generateTB(const CardsInfo& cards)
 				row.partialCompress(j);
 			row.finishCompress(*tb);
 		});
-		cardTb.memComp = std::vector<std::vector<unsigned char>>(numThreads);
-		cardTb.mem = std::vector<std::atomic<U64>>(rows);
+		cardTb.memComp = MemCompVec(numThreads);
+		cardTb.mem = MemVec(rows);
 		tb->memory_remaining -= rows * sizeof(U64);
 		cardTb.isCompressed = false;
 			

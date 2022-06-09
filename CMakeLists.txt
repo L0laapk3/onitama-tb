@@ -11,8 +11,11 @@ target_compile_features(tb PUBLIC cxx_std_20)
 
 set(LZ4_BUNDLED_MODE ON)
 set(LZ4_BUILD_CLI OFF)
+
+add_subdirectory(mimalloc)
+
 add_subdirectory(lz4/build/cmake)
-target_link_libraries(tb lz4_static)
+target_link_libraries(tb lz4_static mimalloc-static)
 target_include_directories(tb PRIVATE ${PROJECT_SOURCE_DIR}/lz4/lib)
 
 set_property(TARGET tb PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)

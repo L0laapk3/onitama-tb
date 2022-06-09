@@ -1,5 +1,7 @@
 #pragma once
 
+#include "mimalloc-new-delete.h"
+
 #include "Board.h"
 #include "Index.hpp"
 #include "Card.hpp"
@@ -17,13 +19,18 @@
 template <U16 TB_MEN, bool STORE_WIN>
 struct TableBase;
 
+typedef std::vector<std::atomic<U64>, mi_stl_allocator<std::atomic<U64>>> MemVec;
+typedef std::vector<unsigned char, mi_stl_allocator<unsigned char>> CompMemRowVec;
+typedef std::vector<CompMemRowVec, mi_stl_allocator<CompMemRowVec>> MemCompVec;
+
 template <U16 TB_MEN, bool STORE_WIN>
 class RefRowWrapper {
 public:
 	typedef std::array<U32, PIECECOUNTMULT<TB_MEN> * KINGSMULT + 1> RefRow;
 	RefRow refs;
-	std::vector<std::atomic<U64>> mem;
-	std::vector<std::vector<unsigned char>> memComp;
+
+	MemVec mem;
+	MemCompVec memComp;
 
 	U8 usesSinceModified = 0;
 	bool isCompressed = true;
