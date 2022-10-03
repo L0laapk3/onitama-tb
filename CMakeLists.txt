@@ -18,8 +18,6 @@ add_subdirectory(lz4/build/cmake)
 target_link_libraries(tb lz4_static mimalloc-static)
 target_include_directories(tb PRIVATE ${PROJECT_SOURCE_DIR}/lz4/lib)
 
-add_compile_options("-stdlib=libc++" "-lc++abi" "-v")
-
 set_property(TARGET tb PROPERTY CXX_STANDARD 20)
 set_property(TARGET tb PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 set(CMAKE_CXX_FLAGS "-march=native -fconstexpr-steps=10000000 -Wno-microsoft-template")
