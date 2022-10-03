@@ -25,7 +25,7 @@ int main(int, char**) {
 		if (1) {
 			auto tbBinary = tb->storeSparse(CARDS);
 			std::ofstream f(std::to_string(TB_MEN) + "men_draws_sparse.bin", std::ios::binary);
-			f.write(reinterpret_cast<char*>(tbBinary.data()), tbBinary.size());
+			f.write(reinterpret_cast<char*>(tbBinary.data()), tbBinary.size() * sizeof(tbBinary[0]));
 			f.close();
 			std::cout << "saved result" << std::endl;
 		}
