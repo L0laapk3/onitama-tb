@@ -9,7 +9,7 @@
 
 int main(int, char**) {
 
-	constexpr uint8_t TB_MEN = 8;
+	constexpr uint8_t TB_MEN = 6;
 
 	const CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB }; // perft cards
 	// const CardsInfo CARDS{ CRAB, DRAGON, ELEPHANT, GOOSE, HORSE }; // smallest TB

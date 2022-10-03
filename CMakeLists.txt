@@ -20,8 +20,20 @@ target_include_directories(tb PRIVATE ${PROJECT_SOURCE_DIR}/lz4/lib)
 
 set_property(TARGET tb PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 set(CMAKE_CXX_FLAGS "-march=native -fconstexpr-steps=10000000 -Wno-microsoft-template")
-set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG -D_MT -Xclang --dependent-lib=msvcrt")
+set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELEASE} -g -gcodeview -D_DLL")
+
+set(CMAKE_CROSSCOMPILING TRUE)
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR x86_64)
+
+# specify the cross compiler
+set(CMAKE_C_COMPILER_TARGET "x86_64-linux-gnu")
+set(CMAKE_C_COMPILER clang)
+set(CMAKE_CXX_COMPILER_TARGET "x86_64-linux-gnu")
+set(CMAKE_CXX_COMPILER clang++)
+set(CMAKE_ASM_COMPILER_TARGET "x86_64-linux-gnu")
+set(CMAKE_ASM_COMPILER clang)
 
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-instr-generate")
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-use=${PROJECT_SOURCE_DIR}/tb6.profdata")
