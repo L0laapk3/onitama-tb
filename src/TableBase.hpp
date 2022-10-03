@@ -1,4 +1,5 @@
 
+
 #include "Board.h"
 #include "Index.hpp"
 #include "Card.hpp"
@@ -14,6 +15,7 @@
 #include <immintrin.h>
 #include <x86intrin.h>
 
+#define NO_PRINTS
 
 
 template <U16 TB_MEN>
@@ -220,10 +222,12 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 		} else {
 			keepCompressed = true;
 		}
-		#ifdef COUNT_BOARDS
-					printf("iter %3llu-%2u: %11llu boards in %.3fs\n", comm.depth, comm.cardI, cnt, time);
-		#else
-					printf("iter %3llu-%2u in %.3fs\n", comm.depth, comm.cardI, time);
+		#ifndef NO_PRINTS
+			#ifdef COUNT_BOARDS
+						printf("iter %3llu-%2u: %11llu boards in %.3fs\n", comm.depth, comm.cardI, cnt, time);
+			#else
+						printf("iter %3llu-%2u in %.3fs\n", comm.depth, comm.cardI, time);
+			#endif
 		#endif
 
 		while(lastModified++ < CARDSMULT) {
