@@ -244,7 +244,9 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 			})
 				if (tb->refTable[decompressCardI].usesSinceModified < 3)
 					goto foundCardCombination;
-			printf("skip %3llu-%2u\n", comm.depth, comm.cardI);
+			#ifndef NO_PRINTS
+				printf("skip %3llu-%2u\n", comm.depth, comm.cardI);
+			#endif
 		}
 		// no card combinations have been modified, quit
 		comm.depth = 0;
