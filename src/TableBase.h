@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mimalloc-new-delete.h"
+#include "mimalloc.h"
 
 #include "Board.h"
 #include "Index.hpp"
