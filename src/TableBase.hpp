@@ -15,7 +15,7 @@
 #include <immintrin.h>
 #include <x86intrin.h>
 
-#define NO_PRINTS
+// #define NO_PRINTS
 
 
 template <U16 TB_MEN>
