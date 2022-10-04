@@ -4,6 +4,9 @@
 
 
 
+constexpr bool PRINT_COMPRESS = false;
+
+
 constexpr LZ4F_preferences_t LZ4Prefs {
 	.compressionLevel = 1,
 };
@@ -12,6 +15,8 @@ constexpr LZ4F_preferences_t LZ4Prefs {
 
 template <U16 TB_MEN, bool STORE_WIN>
 void RefRowWrapper<TB_MEN, STORE_WIN>::initiateCompress(TableBase<TB_MEN, STORE_WIN>& tb) {
+	if (PRINT_COMPRESS)
+		std::cout << "compress" << std::endl << std::flush;
 	assert(!isCompressed);
 	U64 decompressedSectionSize = ((mem.size() + memComp.size() - 1) / memComp.size()) * sizeof(U64);
 	U64 compressedSectionSize = memComp.size() * LZ4F_compressFrameBound(decompressedSectionSize, &LZ4Prefs);  // TODO: do in small blocks instead of one big block
@@ -43,8 +48,8 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::finishCompress(TableBase<TB_MEN, STORE_WI
 	isCompressed = true;
 	isDecompressed = false;
 	for (auto& memCompSection : memComp)
-		tb.memory_remaining -= memCompSection.size() * sizeof(unsigned char);
-	tb.memory_remaining += mem.size() * sizeof(U64);
+		tb.memoryRemaining -= memCompSection.size() * sizeof(unsigned char);
+	tb.memoryRemaining += mem.size() * sizeof(U64);
 	mem.~MemVec();
 }
 
@@ -52,6 +57,8 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::finishCompress(TableBase<TB_MEN, STORE_WI
 
 template <U16 TB_MEN, bool STORE_WIN>
 void RefRowWrapper<TB_MEN, STORE_WIN>::initiateDecompress(TableBase<TB_MEN, STORE_WIN>& tb) {
+	if (PRINT_COMPRESS)
+		std::cout << "decompress" << std::endl << std::flush;
 	mem = MemVec(refs.back());
 	assert(isCompressed);
 	isChanged = false;
@@ -94,9 +101,9 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::finishDecompress(TableBase<TB_MEN, STORE_
 	if (!keepCompressedMem)
 		isCompressed = false;
 	isDecompressed = true;
-	tb.memory_remaining -= refs.back() * sizeof(U64);
+	tb.memoryRemaining -= refs.back() * sizeof(U64);
 	for (auto& memCompSection : memComp) {
-		tb.memory_remaining += memCompSection.size() * sizeof(unsigned char);
+		tb.memoryRemaining += memCompSection.size() * sizeof(unsigned char);
 		if (!keepCompressedMem)
 			memCompSection.~CompMemRowVec();
 	}
@@ -129,13 +136,13 @@ void TableBase<TB_MEN, STORE_WIN>::determineUnloads(U8 nextLoadCardI, std::array
 		}
 	}
 
-	if (memory_remaining < extra_memory_needed)
+	if (memoryRemaining < extra_memory_needed)
 		for (U8 i = 0; i < 30 - numRows; i++) {
 			auto& rowI = UNLOAD_ORDER[nextLoadCardI][i];
 			auto& row = refTable[rowI];
 			if (row.isDecompressed) {
-				cb(row); // this is expected to call finishCompress and update memory_remaining
-				if (memory_remaining >= 0)
+				cb(row); // this is expected to call finishCompress and update memoryRemaining
+				if (memoryRemaining >= 0)
 					break;
 			}
 		}

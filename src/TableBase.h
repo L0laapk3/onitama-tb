@@ -58,6 +58,8 @@ struct TableBase {
     RefRowWrapper<TB_MEN, STORE_WIN>& operator [](int i) {
 		return refTable[i];
 	}
+
+	U64 numThreads;
 	
 	void determineUnloads(U8 cardI, std::function<void(RefRowWrapper<TB_MEN, STORE_WIN>& row)> cb);
 	template<U8 numRows>
@@ -66,11 +68,12 @@ struct TableBase {
 	U64 cnt_0;
 	U64 cnt;
 
-	std::atomic<long long> memory_remaining;
+	std::atomic<long long> memoryRemaining;
 
-	std::vector<uint64_t> storeSparse(const CardsInfo& cards);
+	static void storeSparse(std::ostream& os, TableBase<TB_MEN, STORE_WIN>& tb, const CardsInfo& cards);
+	static std::unique_ptr<TableBase<TB_MEN, false>> loadSparse(std::istream& is, const CardsInfo& cards, U64);
 	
-	static std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generate(const CardsInfo& cards, U64 memory_allowance);
+	static std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generate(const CardsInfo& cards, U64 memoryAllowance);
 };
 
 
