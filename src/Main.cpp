@@ -11,6 +11,7 @@
 int main(int, char**) {
 
 	constexpr uint8_t TB_MEN = 6;
+	constexpr U64 MEM_LIMIT = 100ULL << 30; // 30GB
 
 	const CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB }; // perft cards
 	// const CardsInfo CARDS{ CRAB, DRAGON, ELEPHANT, GOOSE, HORSE }; // smallest TB
@@ -22,13 +23,13 @@ int main(int, char**) {
 		} else if (0) {
 			exhaustiveIndexTest(CARDS);
 		} else if (1) {
-			auto tb = TableBase<TB_MEN, false>::generate(CARDS, (100ULL << 30)); // 100 GB
+			auto tb = TableBase<TB_MEN, false>::generate(CARDS, MEM_LIMIT); // 100 GB
 
-			// if (1) {
-			// 	std::ifstream f(std::to_string(TB_MEN) + "men_draws_sparse.bin", std::ios::in | std::ios::binary);
-			// 	auto tb = TableBase<TB_MEN, false>::loadSparse(f);
-			// 	f.close();
-			// }
+			if (1) {
+				std::ifstream f(std::to_string(TB_MEN) + "men_draws_sparse.bin", std::ios::in | std::ios::binary);
+				auto tb = TableBase<TB_MEN, false>::loadSparse(f, CARDS, MEM_LIMIT); // 100 GB
+				f.close();
+			}
 
 			if (1) {
 				std::ofstream f(std::to_string(TB_MEN) + "men_draws_sparse.bin", std::ios::binary);

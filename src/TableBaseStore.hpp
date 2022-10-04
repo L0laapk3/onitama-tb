@@ -49,42 +49,31 @@ std::unique_ptr<TableBase<TB_MEN, false>> TableBase<TB_MEN, STORE_WIN>::loadSpar
 
     for (U64 i = CARDSMULT; i--> 0; ) {
         U8 cardI = UNLOAD_ORDER[0][i];
-        auto& row = tb.refTable[cardI];
+        auto& row = tb->refTable[cardI];
         if (!row.isDecompressed) {
-            row.initiateDecompress(tb);
-            for (int j = 0; j < tb.numThreads; j++) // TODO: thread
+            row.initiateDecompress(*tb);
+            for (int j = 0; j < tb->numThreads; j++) // TODO: thread
                 row.partialDecompress(j);
-            row.finishDecompress(tb, false);
+            row.finishDecompress(*tb, false);
         }
 
-        for (U64 i = CARDSMULT; i--> 0; ) {
-            U8 cardI = UNLOAD_ORDER[0][i];
-            auto& row = tb.refTable[cardI];
-            if (!row.isDecompressed) {
-                row.initiateDecompress(tb);
-                for (int j = 0; j < tb.numThreads; j++) // TODO: thread
-                    row.partialDecompress(j);
-                row.finishDecompress(tb, false);
+        U64 cnt = 0;
+        for (auto& entry : row.mem)
+            cnt += countOfInterestBits<STORE_WIN>(entry);
+
+        U64 index = 0;
+
+        for (; cnt --> 0; ) {
+            U16 diff;
+            is.read(reinterpret_cast<char*>(&diff), sizeof(U16));
+            if (diff == 0xFFFF) {
+                U64 diff2;
+                is.read(reinterpret_cast<char*>(&diff2), sizeof(U8) * 6);
+                index += diff2;
+            } else {
+                index += diff;
             }
-
-            U64 cnt = 0;
-            for (auto& entry : row.mem)
-                cnt += countOfInterestBits<STORE_WIN>(entry);
-
-            U64 index = 0;
-
-            for (; cnt --> 0; ) {
-                U16 diff;
-                is.read(reinterpret_cast<char*>(&diff), sizeof(U16));
-                if (diff == 0xFFFF) {
-                    U64 diff2;
-                    is.read(reinterpret_cast<char*>(&diff2), sizeof(U8) * 6);
-                    index += diff2;
-                } else {
-                    index += diff;
-                }
-                row.mem[index / 64] |= 1ULL << (index % 64);
-            }
+            row.mem[index / 64] |= 1ULL << (index % 64);
         }
     }
 }
