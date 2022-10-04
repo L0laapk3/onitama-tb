@@ -9,7 +9,7 @@
 
 int main(int, char**) {
 
-
+	constexpr uint8_t TB_MEN = 8;
 
 	const CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB }; // perft cards
 	// const CardsInfo CARDS{ CRAB, DRAGON, ELEPHANT, GOOSE, HORSE }; // smallest TB
@@ -20,14 +20,14 @@ int main(int, char**) {
     } else if (0) {
 		exhaustiveIndexTest(CARDS);
 	} else if (1) {
-        auto tb = TableBase<6, false>::generate(CARDS, 20'000'000);
-        // auto tb = TableBase<8, false>::generate(CARDS, 1'000'000'000);
-		// tb->testCompression();
-		if (0) {
-			// auto tbBinary = tb->compress();
-			// std::ofstream f(std::to_string(TB_MEN) + "men.bin", std::ios::binary);
-			// f.write(reinterpret_cast<char*>(tbBinary.data()), tbBinary.size());
-			// f.close();
+        auto tb = TableBase<TB_MEN, false>::generate(CARDS, 100ULL * 1024 * 1024 * 1024);
+
+		if (1) {
+			auto tbBinary = tb->storeSparse(CARDS);
+			std::ofstream f(std::to_string(TB_MEN) + "men_draws_sparse.bin", std::ios::binary);
+			f.write(reinterpret_cast<char*>(tbBinary.data()), tbBinary.size() * sizeof(tbBinary[0]));
+			f.close();
+			std::cout << "saved result" << std::endl;
 		}
     } else {
 

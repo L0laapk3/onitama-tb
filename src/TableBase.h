@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mimalloc-new-delete.h"
+#include "mimalloc.h"
 
 #include "Board.h"
 #include "Index.hpp"
@@ -68,10 +68,7 @@ struct TableBase {
 
 	std::atomic<long long> memory_remaining;
 
-	// std::vector<unsigned char> compress();
-	// static std::vector<U64> decompressToIndices(const std::vector<unsigned char>& compressed);
-	// void testCompression();
-
+	std::vector<uint64_t> storeSparse(const CardsInfo& cards);
 	
 	static std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> generate(const CardsInfo& cards, U64 memory_allowance);
 };
@@ -99,6 +96,18 @@ constexpr U64 getWinBits(T pos) {
 	return STORE_WIN ? WIN_SHIFT_BITS<STORE_WIN>[pos] : 0x1ULL << pos;
 }
 
+template <bool STORE_WIN, typename T>
+constexpr auto getOfInterestBits(T& bits) {
+	return STORE_WIN ? bits >> 32 : ~bits;
+}
+template <bool STORE_WIN, typename T>
+constexpr auto countOfInterestBits(T& bits) {
+	return STORE_WIN ? _popcnt32(bits >> 32) : _popcnt64(~bits);
+}
+
+
+
+
 template <bool STORE_WIN>
 constexpr typename std::conditional<STORE_WIN, U32, U64>::type getResolvedBits(U64 entry) {
 	return entry;
@@ -107,3 +116,4 @@ constexpr typename std::conditional<STORE_WIN, U32, U64>::type getResolvedBits(U
 
 #include "TableBase.hpp"
 #include "TableBaseCompress.hpp"
+#include "TableBaseStore.hpp"

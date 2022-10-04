@@ -18,9 +18,10 @@ add_subdirectory(lz4/build/cmake)
 target_link_libraries(tb lz4_static mimalloc-static)
 target_include_directories(tb PRIVATE ${PROJECT_SOURCE_DIR}/lz4/lib)
 
+set_property(TARGET tb PROPERTY CXX_STANDARD 20)
 set_property(TARGET tb PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 set(CMAKE_CXX_FLAGS "-march=native -fconstexpr-steps=10000000 -Wno-microsoft-template")
-set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG -D_MT -Xclang --dependent-lib=msvcrt")
+set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELEASE} -g -gcodeview -D_DLL")
 
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-instr-generate")

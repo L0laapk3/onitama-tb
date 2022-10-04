@@ -94,12 +94,12 @@ void exhaustiveIndexTest(const CardsInfo& cards) {
 					if ((bbk0 != bbk1) && (bbk1 != 1ULL << PTEMPLE[1]))
 						for (U64 bbp00 = 1ULL; bbp00 < 1ULL << 26; bbp00 <<= 1)
 							if (bbp00 != bbk0 && bbp00 != bbk1)
-								for (U64 bbp01 = std::min(bbp00 << 1, 1ULL << 25); bbp01 < 1ULL << 26; bbp01 <<= 1)
+								for (U64 bbp01 = std::min<U64>(bbp00 << 1, 1ULL << 25); bbp01 < 1ULL << 26; bbp01 <<= 1)
 									if (bbp01 != bbk0 && bbp01 != bbk1) {
 										U64 bbp0 = (bbp00 | bbp01 | bbk0) & ((1ULL << 25) - 1);
 										for (U64 bbp10 = 1ULL; bbp10 < 1ULL << 26; bbp10 <<= 1)
 											if ((bbp10 != bbk1) && (bbp10 & bbp0) == 0)
-												for (U64 bbp11 = std::min(bbp10 << 1, 1ULL << 25); bbp11 < 1ULL << 26; bbp11 <<= 1)
+												for (U64 bbp11 = std::min<U64>(bbp10 << 1, 1ULL << 25); bbp11 < 1ULL << 26; bbp11 <<= 1)
 													if ((bbp11 != bbk1) && (bbp11 & bbp0) == 0) {
 														U64 bbp1 = (bbp10 | bbp11 | bbk1) & ((1ULL << 25) - 1);
 
