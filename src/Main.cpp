@@ -26,16 +26,23 @@ int main(int, char**) {
 			auto tb = TableBase<TB_MEN, false>::generate(CARDS, MEM_LIMIT); // 100 GB
 
 			if (1) {
-				std::ifstream f(std::to_string(TB_MEN) + "men_draws_sparse.bin", std::ios::in | std::ios::binary);
-				auto tb = TableBase<TB_MEN, false>::loadSparse(f, CARDS, MEM_LIMIT); // 100 GB
-				f.close();
-			}
-
-			if (1) {
 				std::ofstream f(std::to_string(TB_MEN) + "men_draws_sparse.bin", std::ios::binary);
 				TableBase<TB_MEN, false>::storeSparse(f, *tb, CARDS);
 				f.close();
 				std::cout << "saved result" << std::endl;
+			}
+
+			if (1) {
+				std::ifstream f(std::to_string(TB_MEN) + "men_draws_sparse.bin", std::ios::in | std::ios::binary);
+				auto tbFile = TableBase<TB_MEN, false>::loadSparse(f, CARDS, MEM_LIMIT); // 100 GB
+				f.close();
+
+				for (U64 i = 0; i < tb->refTable.size(); i++)
+					for (U64 j = 0; j < tb->refTable[i].mem.size(); j++)
+						if (tb->refTable[i].mem[j] != ~tbFile->refTable[i].mem[j]) {
+							std::cout << "ERROR: " << i << " " << j << std::endl;
+							std::cout << tb->refTable[i].mem[j] << " " << tbFile->refTable[i].mem[j] << std::endl;
+						}
 			}
 		} else {
 

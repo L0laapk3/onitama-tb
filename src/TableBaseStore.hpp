@@ -58,11 +58,9 @@ std::unique_ptr<TableBase<TB_MEN, false>> TableBase<TB_MEN, STORE_WIN>::loadSpar
         }
 
         U64 cnt = 0;
-        for (auto& entry : row.mem)
-            cnt += countOfInterestBits<STORE_WIN>(entry);
+        is.read(reinterpret_cast<char*>(&cnt), sizeof(U64));
 
         U64 index = 0;
-
         for (; cnt --> 0; ) {
             U16 diff;
             is.read(reinterpret_cast<char*>(&diff), sizeof(U16));
@@ -73,7 +71,13 @@ std::unique_ptr<TableBase<TB_MEN, false>> TableBase<TB_MEN, STORE_WIN>::loadSpar
             } else {
                 index += diff;
             }
+            if (index / 64 >= row.mem.size())
+                throw std::runtime_error("index out of bounds: " + std::to_string(index));
             row.mem[index / 64] |= 1ULL << (index % 64);
         }
     }
+
+    std::cout << "restored tablebase" << std::endl;
+
+    return tb;
 }

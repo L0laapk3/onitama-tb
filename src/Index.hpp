@@ -17,7 +17,7 @@
 
 
 // use PDEP for everything except ZEN 1 & 2
-// #define USE_PDEP
+#define USE_PDEP
 //#define NO_INLINE_INDEX
 
 #if defined(NO_INLINE_INDEX) || !defined(NDEBUG)
