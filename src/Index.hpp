@@ -300,9 +300,9 @@ U32 INLINE_INDEX_FN boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
 
 	U32 r = 0;
 	if (TB_MEN >= 10) r += MULTABLE<4>[ip3 - 3];
-	if (TB_MEN >= 8) r += MULTABLE<3>[ip2 - 2];
-	r += MULTABLE<2>[ip1 - 1];
-	r += ip0;
+	if (TB_MEN >= 8)  r += MULTABLE<3>[ip2 - 2];
+	                  r += MULTABLE<2>[ip1 - 1];
+	                  r += ip0;
 	return r;
 }
 

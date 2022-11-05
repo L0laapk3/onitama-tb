@@ -108,6 +108,8 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 		});
 		cardTb.memComp = MemCompVec(numThreads);
 		cardTb.mem = MemVec(rows);
+		for (int i = 0; i < rows; i++)
+			cardTb.mem[i] = 0;
 		tb->memory_remaining -= rows * sizeof(U64);
 			
 		U32 passedRowsCount = 0;

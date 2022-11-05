@@ -9,18 +9,22 @@
 
 int main(int, char**) {
 
-	constexpr uint8_t TB_MEN = 8;
+	constexpr uint8_t TB_MEN = 10;
 
 	const CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB }; // perft cards
 	// const CardsInfo CARDS{ CRAB, DRAGON, ELEPHANT, GOOSE, HORSE }; // smallest TB
 	// const CardsInfo CARDS{ FROG, MANTIS, MONKEY, RABBIT, TIGER }; //largest TB
+	
+	std::cout << "start" << std::endl;
 
     if (0) {
         testIndexing(CARDS);
-    } else if (0) {
+    } else if (1) {
 		exhaustiveIndexTest(CARDS);
-	} else if (1) {
-        auto tb = TableBase<TB_MEN, false>::generate(CARDS, 100ULL * 1024 * 1024 * 1024);
+		std::cout << "done" << std::endl;
+	}
+	if (1) {
+        auto tb = TableBase<TB_MEN, false>::generate(CARDS, 50ULL << 30);
 
 		if (1) {
 			auto tbBinary = tb->storeSparse(CARDS);
