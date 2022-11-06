@@ -19,7 +19,7 @@ int main(int, char**) {
 
     if (0) {
         testIndexing(CARDS);
-    } else if (1) {
+    } else if (0) {
 		exhaustiveIndexTest(CARDS);
 		std::cout << "done" << std::endl;
 	}

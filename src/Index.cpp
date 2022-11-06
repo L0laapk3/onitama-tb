@@ -93,6 +93,7 @@ void exhaustiveIndexTest(const CardsInfo& cards) {
 		auto permutation = CARDS_PERMUTATIONS[cardI];
 		const MoveBoard reverseMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[0][0]], cards.moveBoardsForward[permutation.playerCards[0][1]]);
 
+		// yes, this is extremely messy. It's just a test, if I make it as complicated as the real thing then theres high potential for making the same mistake twice
 		for (U64 bbk0 = 1ULL; bbk0 < 1ULL << 25; bbk0 <<= 1)
 			if (bbk0 != 1ULL << PTEMPLE[0])
 		for (U64 bbk1 = 1ULL; bbk1 < 1ULL << 25; bbk1 <<= 1)

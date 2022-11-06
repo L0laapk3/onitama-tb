@@ -126,22 +126,22 @@ constexpr auto OFFSETS_SUB_EMPTY = [](){
 			U64 offset = 0;
 
 			// when not all pieces are on the board, lzcnt/tzcnt returns 64. We include this here at compile-time in the offset tables.
-			if (p0c < 4 && TB_MEN > 8) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 * 29 / 24;
-			if (p0c < 3 && TB_MEN > 6) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 / 6;
-			if (p0c < 2) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 / 2;
-			if (p0c < 1) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32;
+			if (p0c < 4 && TB_MEN > 8) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 * 29 / 24;
+			if (p0c < 3 && TB_MEN > 6) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 / 6;
+			if (p0c < 2)               offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 / 2;
+			if (p0c < 1)               offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32;
 
 			if (p1c < 4 && TB_MEN > 8) offset += 32 * 31 * 30 * 29 / 24;
 			if (p1c < 3 && TB_MEN > 6) offset += 32 * 31 * 30 / 6;
-			if (p1c < 2) offset += 32 * 31 / 2;
-			if (p1c < 1) offset += 32;
+			if (p1c < 2)               offset += 32 * 31 / 2;
+			if (p1c < 1)               offset += 32;
 
 			a[p0c][p1c][0] = offset;
 
-			if (p0c == 4) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 * 29 / 24;
-			if (p0c == 3) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 / 6;
-			if (p0c == 2) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 / 2;
-			if (p0c == 1) offset += PIECES1MULT<TB_MEN>[p0c][p1c] * 32;
+			if (p0c == 4) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 * 29 / 24;
+			if (p0c == 3) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 / 6;
+			if (p0c == 2) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 / 2;
+			if (p0c == 1) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32;
 
 			a[p0c][p1c][1] = offset;
 		}
@@ -222,6 +222,10 @@ constexpr auto TABLE_FOURPAWNS_INV = GENERATE_PAWN_TABLE<4, true>();
 constexpr std::array<std::array<const U32*, 5>, 2> PAWNTABLE_POINTERS = {{
 	{ &TABLE_ZEROPAWNS[0], &TABLE_ONEPAWN[0], &TABLE_TWOPAWNS[0], &TABLE_THREEPAWNS[0], &TABLE_FOURPAWNS[0] },
 	{ &TABLE_ZEROPAWNS_INV[0], &TABLE_ONEPAWN_INV[0], &TABLE_TWOPAWNS_INV[0], &TABLE_THREEPAWNS_INV[0], &TABLE_FOURPAWNS_INV[0] },
+}};
+constexpr std::array<std::array<const U64, 5>, 2> PAWNTABLE_SIZES = {{
+	{ TABLE_ZEROPAWNS.size(), TABLE_ONEPAWN.size(), TABLE_TWOPAWNS.size(), TABLE_THREEPAWNS.size(), TABLE_FOURPAWNS.size() },
+	{ TABLE_ZEROPAWNS_INV.size(), TABLE_ONEPAWN_INV.size(), TABLE_TWOPAWNS_INV.size(), TABLE_THREEPAWNS_INV.size(), TABLE_FOURPAWNS_INV.size() },
 }};
 
 
@@ -357,6 +361,7 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	};
 	assert(bi.pieceCnt_kingsIndex < PIECECOUNTMULT<TB_MEN> * KINGSMULT);
 	// assert(bi.pieceIndex < PIECES10MULT<TB_MEN>[pp0cnt][pp1cnt]);
+
 	return bi;
 }
 template <U16 TB_MEN, bool invert>
@@ -431,6 +436,7 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 	U64 ip1 = bi.pieceIndex % PIECES1MULT<TB_MEN>[p0c][p1c];
 	U64 ip0 = bi.pieceIndex / PIECES1MULT<TB_MEN>[p0c][p1c];
 
+	assert(ip0 < PAWNTABLE_SIZES[invert][p0c - templeWin]);
 	U64 bbpc0 = PAWNTABLE_POINTERS[invert][p0c - templeWin][ip0];
 	assert(_popcnt64(bbpc0) == p0c - templeWin);
 	if (invert) {
