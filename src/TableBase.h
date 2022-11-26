@@ -19,7 +19,13 @@
 template <U16 TB_MEN, bool STORE_WIN>
 struct TableBase;
 
-typedef std::vector<std::atomic<U64>, mi_stl_allocator<std::atomic<U64>>> MemVec;
+#ifndef U32_TB_ENTRIES
+	typedef U64 TB_ENTRY;
+#else
+	typedef U32 TB_ENTRY;
+#endif
+
+typedef std::vector<std::atomic<TB_ENTRY>, mi_stl_allocator<std::atomic<TB_ENTRY>>> MemVec;
 typedef std::vector<unsigned char, mi_stl_allocator<unsigned char>> CompMemRowVec;
 typedef std::vector<CompMemRowVec, mi_stl_allocator<CompMemRowVec>> MemCompVec;
 
@@ -37,7 +43,7 @@ public:
 	bool isDecompressed = false;
 	bool isChanged = true;
 
-    std::atomic<U64>* operator [](int i) {
+    std::atomic<TB_ENTRY>* operator [](int i) {
 		return &mem.data()[refs[i]];
 	}
 
@@ -78,38 +84,52 @@ struct TableBase {
 
 
 template <bool STORE_WIN>
-constexpr U64 NUM_BOARDS_PER_U64 = STORE_WIN ? 32 : 64;
+constexpr U64 NUM_BOARDS_PER_ENTRY = sizeof(TB_ENTRY) * 8 / (STORE_WIN ? 2 : 1);
+template <bool STORE_WIN>
+constexpr U64 SHIFT_TO_RESOLVED_BITS = STORE_WIN ? sizeof(TB_ENTRY) * 8 / 2 : 0;
+
+
 
 template <bool STORE_WIN, typename T>
-constexpr auto countResolved(T& bits) {
+constexpr auto getFirstResolvedIndex(T& bits) {
+	if (sizeof(TB_ENTRY) == 4)
+		return STORE_WIN ? _tzcnt_u32((U32)bits & 0xFFFFU : (U32)bits);
+	return STORE_WIN ? _tzcnt_u32(bits) : _tzcnt_u64(bits);
+}
+template <bool STORE_WIN, typename T>
+constexpr S64 countResolved(T& bits) {
+	if (sizeof(TB_ENTRY) == 4)
+		return _popcnt32(STORE_WIN ? (U32)bits & 0xFFFFU : (U32)bits);
 	return STORE_WIN ? _popcnt32(bits) : _popcnt64(bits);
 }
 template <bool STORE_WIN>
 constexpr auto WIN_SHIFT_BITS = [](){
-	std::array<U64, NUM_BOARDS_PER_U64<STORE_WIN>> a{};
-	for (U64 i = 0; i < NUM_BOARDS_PER_U64<STORE_WIN>; i++)
-		a[i] = (STORE_WIN ? 0x100000001ULL : 0x1ULL) << i;
+	std::array<TB_ENTRY, NUM_BOARDS_PER_ENTRY<STORE_WIN>> a{};
+	for (U64 i = 0; i < NUM_BOARDS_PER_ENTRY<STORE_WIN>; i++)
+		a[i] = (STORE_WIN ? (sizeof(TB_ENTRY) == 4 ? 0x10001ULL : 0x100000001ULL) : 0x1ULL) << i;
 	return a;
 }();
 template <bool STORE_WIN, typename T>
-constexpr U64 getWinBits(T pos) {
+constexpr TB_ENTRY getWinBits(T pos) {
 	return STORE_WIN ? WIN_SHIFT_BITS<STORE_WIN>[pos] : 0x1ULL << pos;
 }
 
 template <bool STORE_WIN, typename T>
 constexpr auto getOfInterestBits(T& bits) {
-	return STORE_WIN ? bits >> 32 : ~bits;
+	return STORE_WIN ? bits >> SHIFT_TO_RESOLVED_BITS<STORE_WIN> : ~bits;
 }
 template <bool STORE_WIN, typename T>
 constexpr auto countOfInterestBits(T& bits) {
-	return STORE_WIN ? _popcnt32(bits >> 32) : _popcnt64(~bits);
+	return STORE_WIN ? _popcnt32(bits >> SHIFT_TO_RESOLVED_BITS<STORE_WIN>) : (sizeof(TB_ENTRY) == 4 ? _popcnt32(~bits) : _popcnt64(~bits));
 }
 
 
 
 
 template <bool STORE_WIN>
-constexpr typename std::conditional<STORE_WIN, U32, U64>::type getResolvedBits(U64 entry) {
+constexpr typename std::conditional<STORE_WIN, U32, TB_ENTRY>::type getResolvedBits(TB_ENTRY entry) {
+	if (sizeof(TB_ENTRY) == 4 && STORE_WIN)
+		return entry & 0xFFFFU;
 	return entry;
 }
 

@@ -24,8 +24,8 @@ std::vector<uint64_t> TableBase<TB_MEN, STORE_WIN>::storeSparse(const CardsInfo&
         for (U64 i = 0; i < row.mem.size(); i++) {
 		    auto entry = getOfInterestBits<STORE_WIN>(row.mem[i]);
             while (entry) {
-                int bitIndex = STORE_WIN ? _tzcnt_u32(entry) : _tzcnt_u64(entry);
-                result.push_back(32 * i + bitIndex);
+                int bitIndex = getFirstResolvedIndex<STORE_WIN>(entry);
+                result.push_back(NUM_BOARDS_PER_ENTRY<STORE_WIN> * i + bitIndex); // TODO: thats a bug?? fuck
                 entry &= entry - 1;
             }
         }

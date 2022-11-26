@@ -13,8 +13,8 @@ constexpr LZ4F_preferences_t LZ4Prefs {
 template <U16 TB_MEN, bool STORE_WIN>
 void RefRowWrapper<TB_MEN, STORE_WIN>::initiateCompress(TableBase<TB_MEN, STORE_WIN>& tb) {
 	assert(!isCompressed);
-	U64 decompressedSectionSize = ((mem.size() + memComp.size() - 1) / memComp.size()) * sizeof(U64);
-	U64 compressedSectionSize = memComp.size() * LZ4F_compressFrameBound(decompressedSectionSize, &LZ4Prefs);  // TODO: do in small blocks instead of one big block
+	size_t decompressedSectionSize = ((mem.size() + memComp.size() - 1) / memComp.size()) * sizeof(TB_ENTRY);
+	size_t compressedSectionSize = memComp.size() * LZ4F_compressFrameBound(decompressedSectionSize, &LZ4Prefs);  // TODO: do in small blocks instead of one big block
 	for (auto& memCompSection : memComp)
 		memCompSection = CompMemRowVec(compressedSectionSize);
 }
@@ -26,7 +26,7 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::partialCompress(int section) {
 	auto& memCompSection = memComp[section];
 	size_t compressedSize = LZ4F_compressFrame(
 		memCompSection.data(), memCompSection.size(),
-		&mem[startI], (stopI - startI) * sizeof(U64),
+		&mem[startI], (stopI - startI) * sizeof(TB_ENTRY),
 		&LZ4Prefs);
 	// std::cout << memComp.size() << ' ' << compressedSize << std::endl;
 	if (LZ4F_isError(compressedSize)) {
@@ -44,7 +44,7 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::finishCompress(TableBase<TB_MEN, STORE_WI
 	isDecompressed = false;
 	for (auto& memCompSection : memComp)
 		tb.memory_remaining -= memCompSection.size() * sizeof(unsigned char);
-	tb.memory_remaining += mem.size() * sizeof(U64);
+	tb.memory_remaining += mem.size() * sizeof(TB_ENTRY);
 	mem.~MemVec();
 }
 
@@ -72,10 +72,10 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::partialDecompress(int section) {
 		exit(1);
 	}
 
-	size_t outBuf = (stopI - startI) * sizeof(U64);
+	size_t outBuf = (stopI - startI) * sizeof(TB_ENTRY);
 	size_t inBuf = memCompSection.size();
 
-	std::atomic<U64>* dstPtr = &mem[startI];
+	std::atomic<TB_ENTRY>* dstPtr = &mem[startI];
 	unsigned char* srcPtr = memCompSection.data();
 
 	size_t result = LZ4F_decompress(ctx,
@@ -94,7 +94,7 @@ void RefRowWrapper<TB_MEN, STORE_WIN>::finishDecompress(TableBase<TB_MEN, STORE_
 	if (!keepCompressedMem)
 		isCompressed = false;
 	isDecompressed = true;
-	tb.memory_remaining -= refs.back() * sizeof(U64);
+	tb.memory_remaining -= refs.back() * sizeof(TB_ENTRY);
 	for (auto& memCompSection : memComp) {
 		tb.memory_remaining += memCompSection.size() * sizeof(unsigned char);
 		if (!keepCompressedMem)
@@ -123,7 +123,7 @@ void TableBase<TB_MEN, STORE_WIN>::determineUnloads(U8 nextLoadCardI, std::array
 	for (U8 rowI : rowsI) {
 		auto& row = refTable[rowI];
 		if (!row.isDecompressed) {
-			extra_memory_needed += row.refs.back() * sizeof(U64);
+			extra_memory_needed += row.refs.back() * sizeof(TB_ENTRY);
 			for (auto& memCompSect : row.memComp)
 				extra_memory_needed -= memCompSect.size() * sizeof(unsigned char);
 		}
