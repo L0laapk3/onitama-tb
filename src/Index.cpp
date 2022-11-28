@@ -20,7 +20,7 @@
 template <bool startInv, bool endInv>
 void testOne(const CardsInfo& cards) {
 
-	constexpr U16 TB_MEN = 10;
+	constexpr U16 TB_MEN = 4;
 
 	BoardIndex bi;
 	for (U64 cardI = 0; cardI < CARDSMULT; cardI++) {
@@ -98,18 +98,18 @@ void exhaustiveIndexTest(const CardsInfo& cards) {
 			if (bbk0 != 1ULL << PTEMPLE[0])
 		for (U64 bbk1 = 1ULL; bbk1 < 1ULL << 25; bbk1 <<= 1)
 			if ((bbk0 != bbk1) && (bbk1 != 1ULL << PTEMPLE[1]))
-				for (U64 bbp00 = 1ULL; bbp00 < 1ULL << 26; bbp00 <<= 1)
+				for (U64 bbp00 = TB_MEN <= 2 ? 1ULL << 26 : 1ULL; bbp00 < 1ULL << 26; bbp00 <<= 1)
 					if (bbp00 != bbk0 && bbp00 != bbk1)
-				for (U64 bbp01 = std::min<U64>(bbp00 << 1, 1ULL << 25); bbp01 < 1ULL << 26; bbp01 <<= 1)
+				for (U64 bbp01 = TB_MEN <= 4 ? 1ULL << 26 : std::min<U64>(bbp00 << 1, 1ULL << 25); bbp01 < 1ULL << 26; bbp01 <<= 1)
 					if (bbp01 != bbk0 && bbp01 != bbk1)
 				for (U64 bbp02 = TB_MEN <= 6 ? 1ULL << 26 : std::min<U64>(bbp01 << 1, 1ULL << 25); bbp02 < 1ULL << 26; bbp02 <<= 1)
 					if (bbp02 != bbk0 && bbp02 != bbk1)
 				for (U64 bbp03 = TB_MEN <= 8 ? 1ULL << 26 : std::min<U64>(bbp02 << 1, 1ULL << 25); bbp03 < 1ULL << 26; bbp03 <<= 1)
 					if (bbp03 != bbk0 && bbp03 != bbk1) {
 						U64 bbp0 = (bbp00 | bbp01 | bbp02 | bbp03 | bbk0) & ((1ULL << 25) - 1);
-						for (U64 bbp10 = 1ULL; bbp10 < 1ULL << 26; bbp10 <<= 1)
+						for (U64 bbp10 = TB_MEN <= 2 ? 1ULL << 26 : 1ULL; bbp10 < 1ULL << 26; bbp10 <<= 1)
 							if ((bbp10 != bbk1) && (bbp10 & bbp0) == 0)
-						for (U64 bbp11 = std::min<U64>(bbp10 << 1, 1ULL << 25); bbp11 < 1ULL << 26; bbp11 <<= 1)
+						for (U64 bbp11 = TB_MEN <= 4 ? 1ULL << 26 : std::min<U64>(bbp10 << 1, 1ULL << 25); bbp11 < 1ULL << 26; bbp11 <<= 1)
 							if ((bbp11 != bbk1) && (bbp11 & bbp0) == 0)
 						for (U64 bbp12 = TB_MEN <= 6 ? 1ULL << 26 : std::min<U64>(bbp11 << 1, 1ULL << 25); bbp12 < 1ULL << 26; bbp12 <<= 1)
 							if ((bbp12 != bbk1) && (bbp12 & bbp0) == 0)

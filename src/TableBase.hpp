@@ -15,7 +15,7 @@
 #include <immintrin.h>
 #include <x86intrin.h>
 
-// #define NO_PRINTS
+#define NO_PRINTS
 
 
 template <U16 TB_MEN>
@@ -78,7 +78,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 
 	tb->memory_remaining = memory_allowance;
 	
-	std::cout << "jump table size: " << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / sizeof(void*) << " entries (" << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / 1024 << "KB)" << std::endl;
+	std::cout << "jump table size: " << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / sizeof(void*) << " entries (" << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / 1024 << "KiB)" << std::endl;
 
 	U64 totalRows = 0, totalSize = 0;
 	tb->cnt_0 = 0;
@@ -90,7 +90,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 		const MoveBoard combinedOtherMoveBoard = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[0][0]], cards.moveBoardsForward[permutation.playerCards[0][1]]);
 
 
-		U32 rows = 0, size = 0;
+		U64 rows = 0, size = 0;
 		iterateTBCounts<TB_MEN>(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
 			rows += (rowSize + NUM_BOARDS_PER_ENTRY<STORE_WIN> - 1) / NUM_BOARDS_PER_ENTRY<STORE_WIN>;
 			size += rowSize;
@@ -128,7 +128,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 		cardTb.refs.back() = passedRowsCount;
 	}
 	
-	std::cout << "main table size: " << totalSize << " entries (" << totalRows * sizeof(TB_ENTRY) / 1024 / 1024 << "MB)" << std::endl;
+	std::cout << "main table size: " << totalSize << " entries (" << totalRows * sizeof(TB_ENTRY) / 1024 / 1024 << "MiB)" << std::endl;
 
 
 

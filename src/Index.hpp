@@ -84,9 +84,6 @@ constexpr auto GENERATE_OFFSETS() {
 					b[p0c][p1c] = index * KINGSMULT;
                     a[index++] = { p0c, p1c };
                 }
-	// for (int p0c = TB_MEN/2-1; p0c --> 0; )
-	// 	for (int p1c = TB_MEN/2-1; p1c --> 0; )
-	// 		a[index++] = { p0c, p1c };
     return std::pair{ a, b };
 };
 template <U16 TB_MEN>
@@ -128,13 +125,13 @@ constexpr auto OFFSETS_SUB_EMPTY = [](){
 			// when not all pieces are on the board, lzcnt/tzcnt returns 64. We include this here at compile-time in the offset tables.
 			if (p0c < 4 && TB_MEN > 8) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 * 29 / 24;
 			if (p0c < 3 && TB_MEN > 6) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 / 6;
-			if (p0c < 2)               offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 / 2;
-			if (p0c < 1)               offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32;
+			if (p0c < 2 && TB_MEN > 4) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 / 2;
+			if (p0c < 1 && TB_MEN > 2) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32;
 
 			if (p1c < 4 && TB_MEN > 8) offset += 32 * 31 * 30 * 29 / 24;
 			if (p1c < 3 && TB_MEN > 6) offset += 32 * 31 * 30 / 6;
-			if (p1c < 2)               offset += 32 * 31 / 2;
-			if (p1c < 1)               offset += 32;
+			if (p1c < 2 && TB_MEN > 4) offset += 32 * 31 / 2;
+			if (p1c < 1 && TB_MEN > 2) offset += 32;
 
 			a[p0c][p1c][0] = offset;
 
@@ -290,23 +287,23 @@ U32 INLINE_INDEX_FN boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
 	// our algorithm to achieve this depends on p0 < p1 < p2 < p3, where 0 is treated as the largest number.
 	U32 ip0, ip1, ip2, ip3;
 	if (!invert) {
-		ip0 = _tzcnt_u32(bbpc); // when not found, it will return 64 which is compensated by OFFSETS_SUB_EMPTY
-		ip1 = _tzcnt_u32(bbpc &= bbpc-1);
+		if (TB_MEN > 2) ip0 = _tzcnt_u32(bbpc); // when not found, it will return 64 which is compensated by OFFSETS_SUB_EMPTY
+		if (TB_MEN > 4) ip1 = _tzcnt_u32(bbpc &= bbpc-1);
 		if (TB_MEN > 6) ip2 = _tzcnt_u32(bbpc &= bbpc-1);
 		if (TB_MEN > 8) ip3 = _tzcnt_u32(bbpc &= bbpc-1);
 	} else {
 		bbpc <<= shift; // shift amount is the number of positions to shift. If there are 23 possible positions to scan, then it should be shifted by 32 - 23 = 9.
-		ip0 = _lzcnt_u32(bbpc);
-		ip1 = _lzcnt_u32(bbpc &= ~(1ULL << 31 >> ip0));
+		if (TB_MEN > 2) ip0 = _lzcnt_u32(bbpc);
+		if (TB_MEN > 4) ip1 = _lzcnt_u32(bbpc &= ~(1ULL << 31 >> ip0));
 		if (TB_MEN > 6) ip2 = _lzcnt_u32(bbpc &= ~(1ULL << 31 >> ip1));
 		if (TB_MEN > 8) ip3 = _lzcnt_u32(bbpc &= ~(1ULL << 31 >> ip2));
 	}
 
 	U32 r = 0;
-	if (TB_MEN >= 10) r += MULTABLE<4>[ip3 - 3];
-	if (TB_MEN >= 8)  r += MULTABLE<3>[ip2 - 2];
-	                  r += MULTABLE<2>[ip1 - 1];
-	                  r += ip0;
+	if (TB_MEN > 8) r += MULTABLE<4>[ip3 - 3];
+	if (TB_MEN > 6) r += MULTABLE<3>[ip2 - 2];
+	if (TB_MEN > 4) r += MULTABLE<2>[ip1 - 1];
+	if (TB_MEN > 2) r += ip0;
 	return r;
 }
 
@@ -350,10 +347,10 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	
 	U32 offset = offsetArr[templeWin];
 
-	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces
+	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces. Always max 11
 
-	im.rp1 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc1, 9 + pp0cnt); // possible positions: 23 - pp0cnt
-	U32 rp0 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // possible positions: 25 - popcnt(mask)
+	im.rp1 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc1, 9 + pp0cnt); // 32 - (possible positions: 23 - pp0cnt)
+	U32 rp0 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // 32 - (possible positions: 25 - popcnt(mask))
 
 	BoardIndex bi{
 		.pieceCnt_kingsIndex = rpc + rk,
@@ -395,8 +392,8 @@ BoardIndex INLINE_INDEX_FN boardToIndexFromIntermediate(Board board, const MoveB
 	
 	U32 offset = offsetArr[templeWin];
 
-	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces
-	U32 rp0 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // possible positions: 25 - popcnt(mask)
+	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces. Always max 11
+	U32 rp0 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // 32 - (possible positions: 25 - popcnt(mask))
 
 	return {
 		.pieceCnt_kingsIndex = bi.pieceCnt_kingsIndex,

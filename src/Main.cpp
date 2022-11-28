@@ -9,7 +9,7 @@
 
 int main(int, char**) {
 
-	constexpr uint8_t TB_MEN = 10;
+	constexpr uint8_t TB_MEN = 8;
 
 	const CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB }; // perft cards
 	// const CardsInfo CARDS{ CRAB, DRAGON, ELEPHANT, GOOSE, HORSE }; // smallest TB
@@ -24,7 +24,7 @@ int main(int, char**) {
 		std::cout << "done" << std::endl;
 	}
 	if (1) {
-        auto tb = TableBase<TB_MEN, false>::generate(CARDS, 50ULL << 30);
+        auto tb = TableBase<TB_MEN, false>::generate(CARDS, 60ULL << 30);
 
 		if (1) {
 			auto tbBinary = tb->storeSparse(CARDS);

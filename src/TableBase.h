@@ -91,13 +91,13 @@ constexpr U64 SHIFT_TO_RESOLVED_BITS = STORE_WIN ? sizeof(TB_ENTRY) * 8 / 2 : 0;
 
 
 template <bool STORE_WIN, typename T>
-constexpr auto getFirstResolvedIndex(T& bits) {
+constexpr U64 getFirstResolvedIndex(T& bits) {
 	if (sizeof(TB_ENTRY) == 4)
-		return STORE_WIN ? _tzcnt_u32((U32)bits & 0xFFFFU : (U32)bits);
+		return _tzcnt_u32(STORE_WIN ? (U32)bits & 0xFFFFU : (U32)bits);
 	return STORE_WIN ? _tzcnt_u32(bits) : _tzcnt_u64(bits);
 }
 template <bool STORE_WIN, typename T>
-constexpr S64 countResolved(T& bits) {
+constexpr U64 countResolved(T& bits) {
 	if (sizeof(TB_ENTRY) == 4)
 		return _popcnt32(STORE_WIN ? (U32)bits & 0xFFFFU : (U32)bits);
 	return STORE_WIN ? _popcnt32(bits) : _popcnt64(bits);
