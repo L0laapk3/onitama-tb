@@ -9,7 +9,7 @@
 
 int main(int, char**) {
 
-	constexpr uint8_t TB_MEN = 6;
+	constexpr uint8_t TB_MEN = 8;
 
 	const CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB }; // perft cards
 	// const CardsInfo CARDS{ CRAB, DRAGON, ELEPHANT, GOOSE, HORSE }; // smallest TB
@@ -26,7 +26,7 @@ int main(int, char**) {
 	if (1) {
         auto tb = TableBase<TB_MEN, false>::generate(CARDS, 60ULL << 30);
 
-		if (1) {
+		if (0) {
 			auto tbBinary = tb->storeSparse(CARDS);
 			std::ofstream f(std::to_string(TB_MEN) + "men_draws_sparse.bin", std::ios::binary);
 			f.write(reinterpret_cast<char*>(tbBinary.data()), tbBinary.size() * sizeof(tbBinary[0]));

@@ -77,8 +77,10 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 	auto tb = std::make_unique<TableBase<TB_MEN, STORE_WIN>>();
 
 	tb->memory_remaining = memory_allowance;
+
+	auto a = sizeof(typename RefRowWrapper<TB_MEN, STORE_WIN>::RefRow);
 	
-	std::cout << "jump table size: " << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / sizeof(void*) << " entries (" << sizeof(typename TableBase<TB_MEN, STORE_WIN>::RefTable) / 1024 << "KiB)" << std::endl;
+	std::cout << "jump table size: " << sizeof(typename RefRowWrapper<TB_MEN, STORE_WIN>::RefRow) / sizeof(U32) * CARDSMULT << " entries (" << sizeof(typename RefRowWrapper<TB_MEN, STORE_WIN>::RefRow) * CARDSMULT / 1024 << "KiB)" << std::endl;
 
 	U64 totalRows = 0, totalSize = 0;
 	tb->cnt_0 = 0;
@@ -384,11 +386,11 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 									bool oneTrue = false;
 									if (landPiece & moveBoard_p1_card0_or_01[pp]) {
 										oneTrue = true;
-									if ((targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_ENTRY<STORE_WIN>].load(std::memory_order_relaxed) & (1ULL << SHIFT_TO_RESOLVED_BITS<STORE_WIN> << (ti.pieceIndex % NUM_BOARDS_PER_ENTRY<STORE_WIN>))) == 0)
+										if ((static_cast<const TB_ENTRY&>(targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_ENTRY<STORE_WIN>]) & (1ULL << SHIFT_TO_RESOLVED_BITS<STORE_WIN> << (ti.pieceIndex % NUM_BOARDS_PER_ENTRY<STORE_WIN>))) == 0)
 											goto notWin;
 									}
 									if (depth > 2 && (!oneTrue || landPiece & moveBoard_p1_card1_rev[pp]))
-										if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_ENTRY<STORE_WIN>].load(std::memory_order_relaxed) & (1ULL << SHIFT_TO_RESOLVED_BITS<STORE_WIN> << (ti.pieceIndex % NUM_BOARDS_PER_ENTRY<STORE_WIN>))) == 0)
+										if ((static_cast<const TB_ENTRY&>(targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_ENTRY<STORE_WIN>]) & (1ULL << SHIFT_TO_RESOLVED_BITS<STORE_WIN> << (ti.pieceIndex % NUM_BOARDS_PER_ENTRY<STORE_WIN>))) == 0)
 											goto notWin;
 								}
 							}
@@ -420,12 +422,11 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 								bool oneTrue = false;
 								if (landPiece & moveBoard_p1_card0_or_01[pp]) {
 									oneTrue = true;
-									if ((targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_ENTRY<STORE_WIN>].load(std::memory_order_relaxed) & (1ULL << SHIFT_TO_RESOLVED_BITS<STORE_WIN> << (ti.pieceIndex % NUM_BOARDS_PER_ENTRY<STORE_WIN>))) == 0)
+									if ((static_cast<TB_ENTRY>(targetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_ENTRY<STORE_WIN>]) & (1ULL << SHIFT_TO_RESOLVED_BITS<STORE_WIN> << (ti.pieceIndex % NUM_BOARDS_PER_ENTRY<STORE_WIN>))) == 0)
 										goto notWin;
 								}
-									
 								if (depth > 2 && (!oneTrue || (landPiece & moveBoard_p1_card1_rev[pp])))
-									if ((targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_ENTRY<STORE_WIN>].load(std::memory_order_relaxed) & (1ULL << SHIFT_TO_RESOLVED_BITS<STORE_WIN> << (ti.pieceIndex % NUM_BOARDS_PER_ENTRY<STORE_WIN>))) == 0)
+									if ((static_cast<TB_ENTRY>(targetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_ENTRY<STORE_WIN>]) & (1ULL << SHIFT_TO_RESOLVED_BITS<STORE_WIN> << (ti.pieceIndex % NUM_BOARDS_PER_ENTRY<STORE_WIN>))) == 0)
 										goto notWin;
 							}
 						}
