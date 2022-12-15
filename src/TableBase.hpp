@@ -15,11 +15,11 @@
 #include <immintrin.h>
 #include <x86intrin.h>
 
-#define NO_PRINTS
+// #define NO_PRINTS
 
 
 template <U16 TB_MEN>
-constexpr U64 CHUNK_SIZE = PIECECOUNTMULT<TB_MEN>; // a divisor of PIECECOUNTMULT * KINGSMULT is used
+constexpr U64 CHUNK_SIZE = TB_MEN/2; // a divisor of PIECECOUNTMULT * KINGSMULT is used
 
 struct ThreadObj {
 	Sync sync;
