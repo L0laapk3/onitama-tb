@@ -30,9 +30,9 @@ public:
 	template <bool player>
 	bool inline isWinInOne(const MoveBoard& reverseMoveBoard);
 	template <bool player>
-	bool inline isWinInTwo(const MoveBoard& reversePMoveBoard, const MoveBoard& reverseOtherPMoveBoard);
+	bool inline isWinInTwo(const MoveBoard& reverseMoveBoard, const MoveBoard& reverseOtherMoveBoard);
 	template <bool player>
-	bool inline isWinInThree(const MoveBoard& reverseMoveBoard, const MoveBoard& reverseMoveBoardcard0, const MoveBoard& reverseMoveBoardcard1, const MoveBoard& forwardOtherPMoveBoard, const MoveBoard& reverseOtherPMoveBoard);
+	bool inline isWinInThree(const MoveBoard& reverseMoveBoard, const MoveBoard& reverseMoveBoardcard0, const MoveBoard& reverseMoveBoardcard1, const MoveBoard& forwardOtherMoveBoard, const MoveBoard& reverseOtherMoveBoard);
 
 	// debug utils
 	void print() const;
@@ -88,10 +88,10 @@ bool inline Board::isWinInOne(const MoveBoard& reverseMoveBoard) {
 
 
 template <bool player>
-bool inline Board::isWinInTwo(const MoveBoard& reversePMoveBoard, const MoveBoard& reverseOtherPMoveBoard) {
+bool inline Board::isWinInTwo(const MoveBoard& reverseMoveBoard, const MoveBoard& reverseOtherMoveBoard) {
 	// it is the assumption that 2 is the first possible game-ending ply
 	// !player cannot prevent player from winning
-	if (isTempleWinInOne<player>(reversePMoveBoard)) // !player can never prevent temple wins without winning itself earlier
+	if (isTempleWinInOne<player>(reverseMoveBoard)) // !player can never prevent temple wins without winning itself earlier
 		return true;
 
 	//TODO: if player pawn is on the temple square, threatening the !player king. and player king is threatening temple, !player cannot take it.
@@ -105,13 +105,13 @@ bool inline Board::isWinInTwo(const MoveBoard& reversePMoveBoard, const MoveBoar
 	bool forcedToMove = false;
 
 	if (!forcedToMove)
-		if (!isKingAttacked<player>(bbk[!player], reversePMoveBoard))
+		if (!isKingAttacked<player>(bbk[!player], reverseMoveBoard))
 			return false;
 
 	// reverse moveboard cuz its the other player. check all forward king positions
-	U64 possibleKingPositions = reverseOtherPMoveBoard[_tzcnt_u64(bbk[!player])];
+	U64 possibleKingPositions = reverseOtherMoveBoard[_tzcnt_u64(bbk[!player])];
 	while (possibleKingPositions) {
-		if (!isKingAttacked<player>(possibleKingPositions, reversePMoveBoard))
+		if (!isKingAttacked<player>(possibleKingPositions, reverseMoveBoard))
 			return false;
 		possibleKingPositions &= possibleKingPositions - 1;
 	}
@@ -120,13 +120,13 @@ bool inline Board::isWinInTwo(const MoveBoard& reversePMoveBoard, const MoveBoar
 }
 
 
-// optimisation idea: fast check if its even possible at all using precomputed tables
+// check if board is a win in three. No need to check loss in 2 or win in 1, this is already checked earlier
 template <bool player>
-bool inline Board::isWinInThree(const MoveBoard& reverseMoveBoard, const MoveBoard& reverseMoveBoardcard0, const MoveBoard& reverseMoveBoardcard1, const MoveBoard& forwardOtherPMoveBoard, const MoveBoard& reverseOtherPMoveBoard) {
+bool inline Board::isWinInThree(const MoveBoard& reverseMoveBoard, const MoveBoard& reverseMoveBoardcard0, const MoveBoard& reverseMoveBoardcard1, const MoveBoard& forwardOtherMoveBoard, const MoveBoard& reverseOtherMoveBoard) {
 	// any player move for !player cannot prevent player from winning
 	// it is the assumption that 3 is the first possible game-ending ply
 
-	bool isKingThreatened = isTakeWinInOne<!player>(forwardOtherPMoveBoard); // check if !player is threatening players king.
+	bool isKingThreatened = isTakeWinInOne<!player>(forwardOtherMoveBoard); // check if !player is threatening players king.
 
 	
 }

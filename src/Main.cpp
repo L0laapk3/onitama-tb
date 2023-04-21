@@ -14,7 +14,7 @@ int main(int, char**) {
 	const CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB }; // perft cards
 	// const CardsInfo CARDS{ CRAB, DRAGON, ELEPHANT, GOOSE, HORSE }; // smallest TB
 	// const CardsInfo CARDS{ FROG, MANTIS, MONKEY, RABBIT, TIGER }; //largest TB
-	
+
 
     if (0) {
         testIndexing(CARDS);
@@ -56,14 +56,14 @@ int main(int, char**) {
 				largestIndexes = cardsIndexes;
 			}
 		});
-		
-			
+
+
 		std::cout << "smallest tb size (" << smallestTB * sizeof(TB_ENTRY) / 1024 / 1024 << "MB): ";
 		std::cout << smallestIndexes[0] << ' ' << smallestIndexes[1] << ' ' << smallestIndexes[2] << ' ' << smallestIndexes[3] << ' ' << smallestIndexes[4] << std::endl;
 		std::cout << "largest tb size (" << largestTB * sizeof(TB_ENTRY) / 1024 / 1024 << "MB): ";
 		std::cout << largestIndexes[0] << ' ' << largestIndexes[1] << ' ' << largestIndexes[2] << ' ' << largestIndexes[3] << ' ' << largestIndexes[4] << std::endl;
 	}
 
-	
+
 	// std::promise<void>().get_future().wait(); // sleep forever
 }

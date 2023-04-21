@@ -23,7 +23,7 @@
 #if defined(NO_INLINE_INDEX) || !defined(NDEBUG)
 	#define INLINE_INDEX_FN __attribute__((noinline))
 #else
-	#define INLINE_INDEX_FN __attribute__((always_inline)) inline 
+	#define INLINE_INDEX_FN __attribute__((always_inline)) inline
 #endif
 
 
@@ -114,41 +114,9 @@ template <U16 TB_MEN>
 constexpr auto MAX_INDEX = GENERATE_TABLE_SIZES<TB_MEN, true>().first;
 
 
-
-template <U16 TB_MEN>
-constexpr auto OFFSETS_SUB_EMPTY = [](){
-	std::array<std::array<std::array<U32, 2>, TB_MEN/2>, TB_MEN/2> a{};
-	for (int p0c = 0; p0c < TB_MEN/2; p0c++) {
-		for (int p1c = 0; p1c < TB_MEN/2; p1c++) {
-			U64 offset = 0;
-
-			// when not all pieces are on the board, lzcnt/tzcnt returns 64. We include this here at compile-time in the offset tables.
-			if (p0c < 4 && TB_MEN > 8) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 * 29 / 24;
-			if (p0c < 3 && TB_MEN > 6) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 / 6;
-			if (p0c < 2 && TB_MEN > 4) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 / 2;
-			if (p0c < 1 && TB_MEN > 2) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32;
-
-			if (p1c < 4 && TB_MEN > 8) offset += 32 * 31 * 30 * 29 / 24;
-			if (p1c < 3 && TB_MEN > 6) offset += 32 * 31 * 30 / 6;
-			if (p1c < 2 && TB_MEN > 4) offset += 32 * 31 / 2;
-			if (p1c < 1 && TB_MEN > 2) offset += 32;
-
-			a[p0c][p1c][0] = offset;
-
-			if (p0c == 4) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 * 29 / 24;
-			if (p0c == 3) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 * 30 / 6;
-			if (p0c == 2) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32 * 31 / 2;
-			if (p0c == 1) offset += (U64)PIECES1MULT<TB_MEN>[p0c][p1c] * 32;
-
-			a[p0c][p1c][1] = offset;
-		}
-	}
-	return a;
-}();
-
 constexpr auto TABLES_TWOKINGS = [](){
 	std::array<std::array<U16, 32*25>, 2> a{ (U16)-1 };
-	
+
 	for (U64 inv = 0; inv < 2; inv++) {
 		U16 i = 0;
 		for (int j = 0; j < 25; j++)
@@ -228,8 +196,8 @@ constexpr std::array<std::array<const U64, 5>, 2> PAWNTABLE_SIZES = {{
 
 template <U16 pawns>
 constexpr auto MULTABLE = [](){
-	std::array<U64, 34 - pawns> a{};
-	for (int i = 0; i < 34 - pawns; i++) {
+	std::array<U64, 34 - pawns> a{0};
+	for (int i = 0; i < 25; i++) {
 		a[i] = fact(i + pawns - 1, i - 1) / fact(pawns);
 	}
 	return a;
@@ -287,7 +255,7 @@ U32 INLINE_INDEX_FN boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
 	// our algorithm to achieve this depends on p0 < p1 < p2 < p3, where 0 is treated as the largest number.
 	U32 ip0, ip1, ip2, ip3;
 	if (!invert) {
-		if (TB_MEN > 2) ip0 = _tzcnt_u32(bbpc); // when not found, it will return 64 which is compensated by OFFSETS_SUB_EMPTY
+		if (TB_MEN > 2) ip0 = _tzcnt_u32(bbpc); // when not found, it will return 32 which is compensated by MULTABLE
 		if (TB_MEN > 4) ip1 = _tzcnt_u32(bbpc &= bbpc-1);
 		if (TB_MEN > 6) ip2 = _tzcnt_u32(bbpc &= bbpc-1);
 		if (TB_MEN > 8) ip3 = _tzcnt_u32(bbpc &= bbpc-1);
@@ -303,7 +271,7 @@ U32 INLINE_INDEX_FN boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
 	if (TB_MEN > 8) r += MULTABLE<4>[ip3 - 3];
 	if (TB_MEN > 6) r += MULTABLE<3>[ip2 - 2];
 	if (TB_MEN > 4) r += MULTABLE<2>[ip1 - 1];
-	if (TB_MEN > 2) r += ip0;
+	if (TB_MEN > 2) r += ip0 & 31;
 	return r;
 }
 
@@ -320,7 +288,7 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 		std::swap(board.bbp[0], board.bbp[1]);
 		std::swap(board.bbk[0], board.bbk[1]);
 	}
-	
+
 	U64 ik0 = _tzcnt_u64(board.bbk[0]); //attempt to replace table with logic: U64 ik0 = _tzcnt_u64(_pext_u64(board.bbk0, ~(1ULL << 2) & ~board.bbk1));
 	U64 ik1 = _tzcnt_u64(board.bbk[1]);
 	U32 rk = TABLES_TWOKINGS[invert][ik0*32 + ik1];
@@ -333,7 +301,6 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	U64 pp1cnt = _popcnt64(board.bbp[1]);
 	U32 rpc = OFFSET_LOOKUP<TB_MEN>[pp0cnt][pp1cnt];
 	im.mul = PIECES1MULT<TB_MEN>[pp0cnt][pp1cnt];
-	auto& offsetArr = OFFSETS_SUB_EMPTY<TB_MEN>[pp0cnt][pp1cnt];
 
 	// prevent king wins: any squares threatening the p1 king need to be masked out for p0.
 	U64 p0CompactMask = board.bbk[0] | board.bbk[1] | reverseMoveBoard[ik1];
@@ -344,8 +311,6 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 		board.bbp[0] &= ~(1 << PTEMPLE[invert]);
 		p0CompactMask |= (1 << PTEMPLE[invert]);
 	}
-	
-	U32 offset = offsetArr[templeWin];
 
 	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces. Always max 11
 
@@ -354,7 +319,7 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 
 	BoardIndex bi{
 		.pieceCnt_kingsIndex = rpc + rk,
-		.pieceIndex = rp0 * im.mul + im.rp1 - offset,
+		.pieceIndex = rp0 * im.mul + im.rp1,
 	};
 	assert(bi.pieceCnt_kingsIndex < PIECECOUNTMULT<TB_MEN> * KINGSMULT);
 	// assert(bi.pieceIndex < PIECES10MULT<TB_MEN>[pp0cnt][pp1cnt]);
@@ -378,26 +343,23 @@ BoardIndex INLINE_INDEX_FN boardToIndexFromIntermediate(Board board, const MoveB
 	board.bbp[0] &= ~board.bbk[0];
 	U64 pp0cnt = _popcnt64(board.bbp[0]);
 	U64 pp1cnt = _popcnt64(board.bbp[1]) - 1;
-	auto& offsetArr = OFFSETS_SUB_EMPTY<TB_MEN>[pp0cnt][pp1cnt];
 
 	U64 ik1 = _tzcnt_u64(board.bbk[1]);
 	U64 p0CompactMask = board.bbk[0] | board.bbk[1] | reverseMoveBoard[ik1];
-	
+
 	bool templeWin = reverseMoveBoard[PTEMPLE[invert]] & board.bbk[0];
 	if (templeWin) {
 		assert(board.bbp[0] & (1 << PTEMPLE[invert]));
 		board.bbp[0] &= ~(1 << PTEMPLE[invert]);
 		p0CompactMask |= (1 << PTEMPLE[invert]);
 	}
-	
-	U32 offset = offsetArr[templeWin];
 
 	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces. Always max 11
 	U32 rp0 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // 32 - (possible positions: 25 - popcnt(mask))
 
 	return {
 		.pieceCnt_kingsIndex = bi.pieceCnt_kingsIndex,
-		.pieceIndex = rp0 * im.mul + im.rp1 - offset,
+		.pieceIndex = rp0 * im.mul + im.rp1,
 	};
 }
 
@@ -412,7 +374,7 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 
 	U32 rk = bi.pieceCnt_kingsIndex % KINGSMULT;
 	U32 rpc = bi.pieceCnt_kingsIndex / KINGSMULT;
-	
+
 	U64 bbk0, bbk1;
 	std::tie(bbk0, bbk1) = TABLES_BBKINGS[invert][rk];
 	U64 ik1 = _tzcnt_u64(bbk1);
@@ -458,7 +420,7 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 	assert(bbp1 < (1 << 25));
 	// assert(_popcnt64(bbp0) == p0c + 1);
 	// assert(_popcnt64(bbp1) == p1c + 1);
-	
+
 	if (invert) {
 		std::swap(bbp0, bbp1);
 		std::swap(bbk0, bbk1);
