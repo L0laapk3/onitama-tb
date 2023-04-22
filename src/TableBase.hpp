@@ -18,6 +18,10 @@
 #define NO_PRINTS
 
 
+
+std::array<std::atomic<U64>, 17> avx512stats{ 0 };
+
+
 template <U16 TB_MEN>
 constexpr U64 CHUNK_SIZE = 1; // a divisor of PIECECOUNTMULT * KINGSMULT is used
 
@@ -33,7 +37,7 @@ template<U16 TB_MEN, bool STORE_WIN>
 void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std::atomic<U64>& chunkCounter, bool& modified, ThreadObj& comm, U64 threadI) {
 
 	while (true) {
-	
+
 		comm.sync.slaveNotifyWait();
 		if (comm.depth == 0)
 			break;
@@ -67,11 +71,11 @@ void singleThread(const CardsInfo& cards, TableBase<TB_MEN, STORE_WIN>& tb, std:
 
 template<U16 TB_MEN, bool STORE_WIN>
 std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::generate(const CardsInfo& cards, U64 memory_allowance) {
-	
+
 
 	U64 totalLoads = 0;
 	U64 totalDecompressions = 0;
-	
+
 	int numThreads = std::clamp<int>(std::thread::hardware_concurrency(), 1, 1024);
 
 	auto tb = std::make_unique<TableBase<TB_MEN, STORE_WIN>>();
@@ -79,7 +83,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 	tb->memory_remaining = memory_allowance;
 
 	auto a = sizeof(typename RefRowWrapper<TB_MEN, STORE_WIN>::RefRow);
-	
+
 	std::cout << "jump table size: " << sizeof(typename RefRowWrapper<TB_MEN, STORE_WIN>::RefRow) / sizeof(U32) * CARDSMULT << " entries (" << sizeof(typename RefRowWrapper<TB_MEN, STORE_WIN>::RefRow) * CARDSMULT / 1024 << "KiB)" << std::endl;
 
 	U64 totalRows = 0, totalSize = 0;
@@ -101,7 +105,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 		totalRows += rows;
 		totalSize += size;
 
-			
+
 		tb->determineUnloads(cardI, [&](RefRowWrapper<TB_MEN, STORE_WIN>& row) {
 			row.initiateCompress(*tb);
 			for (int j = 0; j < numThreads; j++) // TODO: thread
@@ -113,7 +117,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 		for (int i = 0; i < rows; i++)
 			cardTb.mem[i] = 0;
 		tb->memory_remaining -= rows * sizeof(TB_ENTRY);
-			
+
 		U32 passedRowsCount = 0;
 		// set final bits to resolved.
 		iterateTBCounts<TB_MEN>(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
@@ -129,7 +133,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 		cardTb.isDecompressed = true;
 		cardTb.refs.back() = passedRowsCount;
 	}
-	
+
 	std::cout << "main table size: " << totalSize << " entries (" << totalRows * sizeof(TB_ENTRY) / 1024 / 1024 << "MiB)" << std::endl;
 
 
@@ -149,7 +153,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 		threads[i] = std::thread(&singleThread<TB_MEN, STORE_WIN>, std::cref(cards), std::ref(*tb), std::ref(chunkCounter), std::ref(modified), std::ref(comm), i);
 
 	comm.sync.masterWait(numThreads);
-	
+
 	while (true) {
 
 		std::vector<RefRowWrapper<TB_MEN, STORE_WIN>*> compressedRows;
@@ -180,7 +184,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 				row.finishDecompress(*tb, keepCompressed);
 			}
 		}
-		
+
 		for (U8 decompressCardI : std::array<U8, 5>{
 			comm.cardI,
 			CARDS_SWAP[invCardI][1][0],
@@ -211,7 +215,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 			CARDS_SWAP[invCardI][1][1],
 		})
 			tb->refTable[decompressCardI].usesSinceModified++;
-		
+
 		if (modified) {
 			for (U8 decompressCardI : std::array<U8, 3>{
 				comm.cardI,
@@ -237,6 +241,12 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 		while(lastModified++ < CARDSMULT) {
 
 			if (++comm.cardI == CARDSMULT) {
+				std::cout << "avx512 efficiency at depth " << comm.depth << ":" << std::endl;
+				for (int i = 0; i <= 16; i++) {
+					std::cout << std::setw(2) << i << ": " << avx512stats[i] << std::endl;
+					avx512stats[i] = 0;
+				}
+
 				comm.cardI = 0;
 				comm.depth++;
 			}
@@ -267,10 +277,10 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 
 		chunkCounter = 0;
 	}
-	
+
 	for (auto& thread : threads)
 		thread.join();
-		
+
 	const float totalInclusiveTime = std::max<float>(1, (U64)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginLoopTime).count()) / 1000000;
 	tb->cnt = tb->cnt_0;
 	for (U64 i = CARDSMULT; i--> 0; ) {
@@ -289,7 +299,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 	}
 	printf("found %llu boards in %.3fs/%.3fs\n", tb->cnt, totalTime, totalInclusiveTime);
 
-	
+
 	std::cout << "decompressed " << totalDecompressions << " rows out of " << totalLoads << " loads" << std::endl;
 
 	return tb;
@@ -304,7 +314,7 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 	BoardIndex bi;
 	// U64 i = 0;
 
-	
+
 	U8 cardI = CARDS_INVERT[invCardI];
 
 	auto& cardTb = tb[invCardI];
@@ -314,10 +324,10 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 	auto& p0ReverseTargetRow1 = tb[CARDS_SWAP[cardI][0][1]];
 	auto permutation = CARDS_PERMUTATIONS[cardI];
 
-	
+
 	const MoveBoard& moveBoard_p1_card0_rev = cards.moveBoardsReverse[permutation.playerCards[1][0]];
 	const MoveBoard& moveBoard_p1_card1_rev = cards.moveBoardsReverse[permutation.playerCards[1][1]];
-	
+
 	const MoveBoard moveBoard_p0_card01_rev = combineMoveBoards(cards.moveBoardsReverse[permutation.playerCards[0][0]], cards.moveBoardsReverse[permutation.playerCards[0][1]]);
 	const MoveBoard moveBoard_p1_card01_rev = combineMoveBoards(moveBoard_p1_card0_rev, moveBoard_p1_card1_rev);
 	const MoveBoard moveBoard_p1_card01 = combineMoveBoards(cards.moveBoardsForward[permutation.playerCards[1][0]], cards.moveBoardsForward[permutation.playerCards[1][1]]);
@@ -335,7 +345,7 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 			// std::cout << i << std::endl;
 			break;
 		}
-		
+
 		bi.pieceCnt_kingsIndex--;
 		for (U64 i = 0; i < CHUNK_SIZE<TB_MEN>; i++) {
 			bi.pieceCnt_kingsIndex++;
@@ -348,6 +358,12 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 			for (U64 pieceIndex = 0; currentEntry < lastEntry; pieceIndex += NUM_BOARDS_PER_ENTRY<STORE_WIN>) {
 				auto& entry = *currentEntry++;
 				TB_ENTRY newP1Wins = 0;
+
+				for (int i = 0; i < 4; i++) {
+					auto cnt = _tzcnt_u16((entry >> (i * 16)) & ((1 << 16) - 1));
+					avx512stats[cnt]++;
+				}
+
 				for (auto bits = getResolvedBits<STORE_WIN>(~entry); bits; bits &= bits - 1) {
 					U64 bitIndex = sizeof(bits) == 4 ? _tzcnt_u32(bits) : _tzcnt_u64(bits);
 					bi.pieceIndex = pieceIndex + bitIndex;
@@ -363,7 +379,7 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 						U64 scan = board.bbp[1] & ~board.bbk[1];
 						if (kingThreatenPawns)
 							scan &= _popcnt64(kingThreatenPawns) > 1 ? 0ULL : moveBoard_p1_card01[_tzcnt_u64(kingThreatenPawns)];
-						
+
 						#pragma unroll
 						for (int isKingMove = 0; isKingMove < 2; isKingMove++) {
 							while (scan || isKingMove) {
@@ -393,7 +409,7 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 										};
 
 										auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card01_rev); // the resulting board has p0 to move and needs to be a win
-											
+
 										bool oneTrue = false;
 										if (landPiece & moveBoard_p1_card0_or_01[pp]) {
 											oneTrue = true;
@@ -416,7 +432,7 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 					// all p1 moves result in win for p0. mark state as won for p0
 					newP1Wins |= 1ULL << bitIndex;
 
-					
+
 					{ // also mark all states with p0 to move that have the option of moving to this board
 						U64 pk1 = _tzcnt_u64(board.bbk[1]);
 						U64 pk1Unmove0 = moveBoard_p0_card1side_rev[pk1];
@@ -486,7 +502,7 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 							}
 						}
 					}
-					
+
 				notWin:; // jump out of all the forward move loops, and jump over all the mark tb entry as win code
 				}
 
