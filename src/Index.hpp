@@ -74,14 +74,14 @@ constexpr auto PIECES10KMULT = [](){
 template <U16 TB_MEN>
 constexpr auto GENERATE_OFFSETS() {
 	std::array<std::pair<U64, U64>, TB_MEN/2 * TB_MEN/2> a{};
-	std::array<std::array<U32, TB_MEN/2>, TB_MEN/2> b{};
+	std::array<std::array<U32, TB_MEN/2 + 1>, TB_MEN/2 + 1> b{ 0 };
     int index = 0;
 	for (int i = TB_MEN - 1; i-- > 0; )
         for (int j = i % 2; j <= TB_MEN; j += 2)
             for (int k = -1; k <= (j == 0 ? 0 : 1); k += 2)
                 if (i - j >= 0 && i + j <= TB_MEN - 2) {
                     int p0c = (i - k * j) / 2, p1c = (i + k * j) / 2;
-					b[p0c][p1c] = index * KINGSMULT;
+					b[p0c + 1][p1c + 1] = index * KINGSMULT;
                     a[index++] = { p0c, p1c };
                 }
     return std::pair{ a, b };
@@ -237,7 +237,7 @@ U64 __attribute__((always_inline)) inline indexToBoard_decompactPawnBitboard(U64
 
 
 constexpr auto MULTABLE = [](){
-	std::array<U64, 32 * 3 + 1 - 3 - 4> a{0};
+	std::array<U32, 32 * 3 + 1 - 3 - 4> a{0};
 	int index = 0;
 	for (int pawns = 2; pawns < 5; pawns++) {
 		for (int i = pawns - 2; i < 25; i++)
@@ -247,8 +247,23 @@ constexpr auto MULTABLE = [](){
 	return a;
 }();
 
-template <U16 TB_MEN, bool invert>
-U32 __attribute__((always_inline)) inline boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
+template <U16 TB_MEN>
+constexpr auto PIECES1MULT_MULTABLE = []() {
+	std::array<std::array<std::array<U32, 32 - 1 + MULTABLE.size()>, TB_MEN/2 + 1>, TB_MEN/2 + 1> a{0};
+	for (int p0c = 0; p0c < TB_MEN/2; p0c++)
+		for (int p1c = 0; p1c < TB_MEN/2; p1c++) {
+			for (int i = 0; i < 25; i++)
+				a[p0c + 1][p1c + 1][i] = i * PIECES1MULT<TB_MEN>[p0c][p1c];
+			U64 index = 32 - 1;
+
+			for (int i = 0; i < MULTABLE.size(); i++)
+				a[p0c + 1][p1c + 1][index + i] = MULTABLE[i] * PIECES1MULT<TB_MEN>[p0c][p1c];
+		}
+	return a;
+}();
+
+template <U16 TB_MEN, bool invert, bool multable1 = true, typename T>
+U32 __attribute__((always_inline)) inline boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift, T& multable) {
 
 	// 0 means the piece has been taken and is not on the board
 	// 1-x means the piece is on a square as given by bbp0c/bbp1c
@@ -268,16 +283,21 @@ U32 __attribute__((always_inline)) inline boardToIndex_pawnBitboardToIndex(U64 b
 		if (TB_MEN > 8) ip3 = _lzcnt_u32(bbpc &= ~(1ULL << 31 >> ip2));
 	}
 
-	if (TB_MEN > 2) r += ip0 & 31;
-	if (TB_MEN > 4) r += MULTABLE[ip1];
-	if (TB_MEN > 6) r += MULTABLE[ip2 + 30]; // offset: see multable generation
-	if (TB_MEN > 8) r += MULTABLE[ip3 + 59]; // offset: see multable generation
+	U32 offset = 0;
+	if (TB_MEN > 2 && multable1)  { r += multable[ip0]; offset += 31; }
+	if (TB_MEN > 2 && !multable1) r += ip0 & 31;
+	if (TB_MEN > 4) { r += multable[ip1 + offset]; offset += 30; }
+	if (TB_MEN > 6) { r += multable[ip2 + offset]; offset += 29; } // offset: see multable generation
+	if (TB_MEN > 8) r += multable[ip3 + offset]; // offset: see multable generation
 	return r;
+}
+template <U16 TB_MEN, bool invert>
+U32 __attribute__((always_inline)) inline boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
+	return boardToIndex_pawnBitboardToIndex<TB_MEN, invert, false>(bbpc, shift, MULTABLE);
 }
 
 
 struct BoardToIndexIntermediate {
-	U32 mul;
 	U32 rp1;
 };
 // boardToIndex<false>(board): given a board with player 0 to move, returns unique index for that board
@@ -300,8 +320,7 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	U64 bbpc1 = boardToIndex_compactPawnBitboard<TB_MEN/2 + 1>(board.bbp[1], board.bbp[0] | board.bbk[1]); // P1 pawns skip over kings and P0 pawns
 
 	board.bbp[0] &= ~board.bbk[0];
-	U32 rpc = OFFSET_LOOKUP<TB_MEN>[pp0cnt - 1][pp1cnt - 1];
-	im.mul = PIECES1MULT<TB_MEN>[pp0cnt - 1][pp1cnt - 1];
+	U32 rpc = OFFSET_LOOKUP<TB_MEN>[pp0cnt][pp1cnt];
 
 	// prevent king wins: any squares threatening the p1 king need to be masked out for p0.
 	U64 p0CompactMask = board.bbk[0] | board.bbk[1] | reverseMoveBoard[ik1];
@@ -316,11 +335,11 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces. Always max 11
 
 	im.rp1 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc1, 8 + pp0cnt); // 32 - (possible positions: 24 - pp0cnt)
-	U32 rp0 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // 32 - (possible positions: 25 - popcnt(mask))
+	U32 rp0_mul = boardToIndex_pawnBitboardToIndex<TB_MEN, invert, true>(bbpc0, 7 + _popcnt64(p0CompactMask), PIECES1MULT_MULTABLE<TB_MEN>[pp0cnt][pp1cnt]); // 32 - (possible positions: 25 - popcnt(mask))
 
 	BoardIndex bi{
 		.pieceCnt_kingsIndex = rpc + rk,
-		.pieceIndex = rp0 * im.mul + im.rp1,
+		.pieceIndex = rp0_mul + im.rp1,
 	};
 	assert(bi.pieceCnt_kingsIndex < PIECECOUNTMULT<TB_MEN> * KINGSMULT);
 	// assert(bi.pieceIndex < PIECES10MULT<TB_MEN>[pp0cnt][pp1cnt]);
@@ -341,9 +360,9 @@ BoardIndex INLINE_INDEX_FN boardToIndexFromIntermediate(Board board, const MoveB
 		std::swap(board.bbk[0], board.bbk[1]);
 	}
 
-	board.bbp[0] &= ~board.bbk[0];
 	U64 pp0cnt = _popcnt64(board.bbp[0]);
-	U64 pp1cnt = _popcnt64(board.bbp[1]) - 1;
+	U64 pp1cnt = _popcnt64(board.bbp[1]);
+	board.bbp[0] &= ~board.bbk[0];
 
 	U64 ik1 = _tzcnt_u64(board.bbk[1]);
 	U64 p0CompactMask = board.bbk[0] | board.bbk[1] | reverseMoveBoard[ik1];
@@ -356,11 +375,11 @@ BoardIndex INLINE_INDEX_FN boardToIndexFromIntermediate(Board board, const MoveB
 	}
 
 	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces. Always max 11
-	U32 rp0 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // 32 - (possible positions: 25 - popcnt(mask))
+	U32 rp0 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert, true>(bbpc0, 7 + _popcnt64(p0CompactMask), PIECES1MULT_MULTABLE<TB_MEN>[pp0cnt][pp1cnt]); // 32 - (possible positions: 25 - popcnt(mask))
 
 	return {
 		.pieceCnt_kingsIndex = bi.pieceCnt_kingsIndex,
-		.pieceIndex = rp0 * im.mul + im.rp1,
+		.pieceIndex = rp0 + im.rp1,
 	};
 }
 
