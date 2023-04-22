@@ -473,7 +473,7 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 										}
 
 										if (!isWinInOne0) {
-											BoardToIndexIntermediate im;
+											BoardToIndexIntermediate<TB_MEN> im;
 											auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card1side_rev, im);
 											p0ReverseTargetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_ENTRY<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti.pieceIndex % NUM_BOARDS_PER_ENTRY<STORE_WIN>), std::memory_order_relaxed);
 											if (!isWinInOne1) {
