@@ -34,7 +34,7 @@ struct BoardIndex {
 
 
 constexpr U32 CARDSMULT = 30;
-constexpr U32 KINGSMULT = 23*24+1;
+constexpr U32 KINGSMULT = 556;
 
 template <U16 TB_MEN>
 constexpr U32 PIECECOUNTMULT = (TB_MEN / 2) * (TB_MEN / 2);
@@ -442,7 +442,7 @@ template <U16 TB_MEN>
 void iterateTBCounts(const MoveBoard& reverseMoveBoard, std::function<void(U32, U32)> cb) {
 	for (U64 pieceCountI = 0; pieceCountI < PIECECOUNTMULT<TB_MEN>; pieceCountI++) {
 		auto& pc = OFFSET_ORDER<TB_MEN>[pieceCountI];
-		for (U64 kingI = 0; kingI < KINGSMULT; kingI++) {
+		for (U64 kingI = 0; kingI < 553; kingI++) {
 			U32 pieceCnt_kingsIndex = pieceCountI * KINGSMULT + kingI;
 			U32 rowSize;
 
