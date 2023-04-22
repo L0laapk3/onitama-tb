@@ -194,15 +194,6 @@ constexpr std::array<std::array<const U64, 5>, 2> PAWNTABLE_SIZES = {{
 }};
 
 
-constexpr auto MULTABLE = [](){
-	std::array<U64, 32 * 3 + 1> a{0};
-	for (int pawns = 2; pawns < 5; pawns++)
-		for (int i = pawns - 1; i < 25; i++)
-			a[32 * (pawns - 2) + i + pawns - 1] = fact(i + pawns - 1, i - 1) / fact(pawns);
-	return a;
-}();
-
-
 
 
 
@@ -245,6 +236,17 @@ U64 __attribute__((always_inline)) inline indexToBoard_decompactPawnBitboard(U64
 
 
 
+constexpr auto MULTABLE = [](){
+	std::array<U64, 32 * 3 + 1 - 3 - 4> a{0};
+	int index = 0;
+	for (int pawns = 2; pawns < 5; pawns++) {
+		for (int i = pawns - 2; i < 25; i++)
+			a[index + i + pawns - 1] = fact(i + pawns - 1, i - 1) / fact(pawns);
+		index += 32 - pawns; // reduce the number of zeroes in the table to keep the size small
+	}
+	return a;
+}();
+
 template <U16 TB_MEN, bool invert>
 U32 __attribute__((always_inline)) inline boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
 
@@ -252,7 +254,7 @@ U32 __attribute__((always_inline)) inline boardToIndex_pawnBitboardToIndex(U64 b
 	// 1-x means the piece is on a square as given by bbp0c/bbp1c
 	// we can achieve a reduction of 4!, we don't care about the permutation of the 4 pawns.
 	// our algorithm to achieve this depends on p0 < p1 < p2 < p3, where 0 is treated as the largest number.
-	U32 ip0, ip1, ip2, ip3;
+	U32 ip0, ip1, ip2, ip3, r = 0;
 	if (!invert) {
 		if (TB_MEN > 2) ip0 = _tzcnt_u32(bbpc); // when not found, it will return 32 which is compensated by MULTABLE
 		if (TB_MEN > 4) ip1 = _tzcnt_u32(bbpc &= bbpc-1);
@@ -266,11 +268,10 @@ U32 __attribute__((always_inline)) inline boardToIndex_pawnBitboardToIndex(U64 b
 		if (TB_MEN > 8) ip3 = _lzcnt_u32(bbpc &= ~(1ULL << 31 >> ip2));
 	}
 
-	U32 r = 0;
-	if (TB_MEN > 8) r += MULTABLE[ip3 + 64];
-	if (TB_MEN > 6) r += MULTABLE[ip2 + 32];
-	if (TB_MEN > 4) r += MULTABLE[ip1];
 	if (TB_MEN > 2) r += ip0 & 31;
+	if (TB_MEN > 4) r += MULTABLE[ip1];
+	if (TB_MEN > 6) r += MULTABLE[ip2 + 30]; // offset: see multable generation
+	if (TB_MEN > 8) r += MULTABLE[ip3 + 59]; // offset: see multable generation
 	return r;
 }
 

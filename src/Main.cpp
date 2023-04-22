@@ -10,10 +10,16 @@
 int main(int, char**) {
 
 	constexpr uint8_t TB_MEN = 8;
+	constexpr U64 MEMORY_LIMIT = 60ULL << 30;
 
 	const CardsInfo CARDS{ BOAR, OX, ELEPHANT, HORSE, CRAB }; // perft cards
 	// const CardsInfo CARDS{ CRAB, DRAGON, ELEPHANT, GOOSE, HORSE }; // smallest TB
 	// const CardsInfo CARDS{ FROG, MANTIS, MONKEY, RABBIT, TIGER }; //largest TB
+
+	if (1) {
+		// quickly run the 6 men test
+        auto tb = TableBase<6, false>::generate(CARDS, MEMORY_LIMIT);
+	}
 
 
     if (0) {
@@ -24,7 +30,7 @@ int main(int, char**) {
 		std::cout << "done" << std::endl;
 	}
 	if (1) {
-        auto tb = TableBase<TB_MEN, false>::generate(CARDS, 60ULL << 30);
+        auto tb = TableBase<TB_MEN, false>::generate(CARDS, MEMORY_LIMIT);
 
 		if (0) {
 			auto tbBinary = tb->storeSparse(CARDS);

@@ -292,6 +292,11 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 
 	std::cout << "decompressed " << totalDecompressions << " rows out of " << totalLoads << " loads" << std::endl;
 
+	if ((TB_MEN == 6 && tb->cnt != 537649967ULL) || (TB_MEN == 8 && tb->cnt != 19974501547ULL)) {
+		std::cerr << "ERROR: WRONG NUMBER OF BOARDS!" << std::endl;
+		throw std::runtime_error("wrong number of boards");
+	}
+
 	return tb;
 }
 
