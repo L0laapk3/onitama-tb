@@ -18,7 +18,7 @@
 
 // use PDEP for everything except ZEN 1 & 2
 #define USE_PDEP
-//#define NO_INLINE_INDEX
+// #define NO_INLINE_INDEX
 
 #if defined(NO_INLINE_INDEX) || !defined(NDEBUG)
 	#define INLINE_INDEX_FN __attribute__((noinline))
@@ -209,7 +209,7 @@ constexpr auto MULTABLE = [](){
 
 
 template <int maskMaxBits>
-U64 INLINE_INDEX_FN boardToIndex_compactPawnBitboard(U64 bbp, U64 mask) {
+U64 __attribute__((always_inline)) inline boardToIndex_compactPawnBitboard(U64 bbp, U64 mask) {
 #ifdef USE_PDEP
 	return _pext_u64(bbp, ~mask);
 #else
@@ -227,7 +227,7 @@ U64 INLINE_INDEX_FN boardToIndex_compactPawnBitboard(U64 bbp, U64 mask) {
 }
 
 template <int maskMaxBits>
-U64 INLINE_INDEX_FN indexToBoard_decompactPawnBitboard(U64 bbp, U64 mask) {
+U64 __attribute__((always_inline)) inline indexToBoard_decompactPawnBitboard(U64 bbp, U64 mask) {
 #ifdef USE_PDEP
 	return _pdep_u64(bbp, ~mask);
 #else
@@ -247,7 +247,7 @@ U64 INLINE_INDEX_FN indexToBoard_decompactPawnBitboard(U64 bbp, U64 mask) {
 
 
 template <U16 TB_MEN, bool invert>
-U32 INLINE_INDEX_FN boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
+U32 __attribute__((always_inline)) inline boardToIndex_pawnBitboardToIndex(U64 bbpc, U64 shift) {
 
 	// 0 means the piece has been taken and is not on the board
 	// 1-x means the piece is on a square as given by bbp0c/bbp1c
@@ -293,14 +293,15 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	U64 ik1 = _tzcnt_u64(board.bbk[1]);
 	U32 rk = TABLES_TWOKINGS[invert][ik0*32 + ik1];
 
+	U64 pp0cnt = _popcnt64(board.bbp[0]);
+	U64 pp1cnt = _popcnt64(board.bbp[1]);
+
 	board.bbp[1] &= ~board.bbk[1];
 	U64 bbpc1 = boardToIndex_compactPawnBitboard<TB_MEN/2 + 1>(board.bbp[1], board.bbp[0] | board.bbk[1]); // P1 pawns skip over kings and P0 pawns
 
 	board.bbp[0] &= ~board.bbk[0];
-	U64 pp0cnt = _popcnt64(board.bbp[0]);
-	U64 pp1cnt = _popcnt64(board.bbp[1]);
-	U32 rpc = OFFSET_LOOKUP<TB_MEN>[pp0cnt][pp1cnt];
-	im.mul = PIECES1MULT<TB_MEN>[pp0cnt][pp1cnt];
+	U32 rpc = OFFSET_LOOKUP<TB_MEN>[pp0cnt - 1][pp1cnt - 1];
+	im.mul = PIECES1MULT<TB_MEN>[pp0cnt - 1][pp1cnt - 1];
 
 	// prevent king wins: any squares threatening the p1 king need to be masked out for p0.
 	U64 p0CompactMask = board.bbk[0] | board.bbk[1] | reverseMoveBoard[ik1];
@@ -314,7 +315,7 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 
 	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces. Always max 11
 
-	im.rp1 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc1, 9 + pp0cnt); // 32 - (possible positions: 23 - pp0cnt)
+	im.rp1 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc1, 9 + pp0cnt - 1); // 32 - (possible positions: 23 - pp0cnt)
 	U32 rp0 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // 32 - (possible positions: 25 - popcnt(mask))
 
 	BoardIndex bi{
@@ -327,7 +328,7 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	return bi;
 }
 template <U16 TB_MEN, bool invert>
-BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMoveBoard) {
+BoardIndex __attribute__((always_inline)) inline boardToIndex(Board board, const MoveBoard& reverseMoveBoard) {
 	BoardToIndexIntermediate im;
 	return boardToIndex<TB_MEN, invert>(board, reverseMoveBoard, im);
 }
