@@ -194,12 +194,11 @@ constexpr std::array<std::array<const U64, 5>, 2> PAWNTABLE_SIZES = {{
 }};
 
 
-template <U16 pawns>
 constexpr auto MULTABLE = [](){
-	std::array<U64, 34 - pawns> a{0};
-	for (int i = 0; i < 25; i++) {
-		a[i] = fact(i + pawns - 1, i - 1) / fact(pawns);
-	}
+	std::array<U64, 32 * 3 + 1> a{0};
+	for (int pawns = 2; pawns < 5; pawns++)
+		for (int i = pawns - 1; i < 25; i++)
+			a[32 * (pawns - 2) + i + pawns - 1] = fact(i + pawns - 1, i - 1) / fact(pawns);
 	return a;
 }();
 
@@ -268,9 +267,9 @@ U32 __attribute__((always_inline)) inline boardToIndex_pawnBitboardToIndex(U64 b
 	}
 
 	U32 r = 0;
-	if (TB_MEN > 8) r += MULTABLE<4>[ip3 - 3];
-	if (TB_MEN > 6) r += MULTABLE<3>[ip2 - 2];
-	if (TB_MEN > 4) r += MULTABLE<2>[ip1 - 1];
+	if (TB_MEN > 8) r += MULTABLE[ip3 + 64];
+	if (TB_MEN > 6) r += MULTABLE[ip2 + 32];
+	if (TB_MEN > 4) r += MULTABLE[ip1];
 	if (TB_MEN > 2) r += ip0 & 31;
 	return r;
 }
@@ -315,7 +314,7 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 
 	U64 bbpc0 = boardToIndex_compactPawnBitboard<11>(board.bbp[0], p0CompactMask); // P0 pawns skip over kings and opponent king threaten spaces. Always max 11
 
-	im.rp1 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc1, 9 + pp0cnt - 1); // 32 - (possible positions: 23 - pp0cnt)
+	im.rp1 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc1, 8 + pp0cnt); // 32 - (possible positions: 24 - pp0cnt)
 	U32 rp0 = boardToIndex_pawnBitboardToIndex<TB_MEN, invert>(bbpc0, 7 + _popcnt64(p0CompactMask)); // 32 - (possible positions: 25 - popcnt(mask))
 
 	BoardIndex bi{
