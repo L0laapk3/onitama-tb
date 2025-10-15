@@ -237,7 +237,7 @@ U64 __attribute__((always_inline)) inline indexToBoard_decompactPawnBitboard(U64
 
 
 constexpr auto MULTABLE = [](){
-	std::array<U32, 32 * 3 + 1 - 3 - 4> a{0};
+	std::array<U32, 31+30+29+32+1> a{0};
 	int index = 0;
 	for (int pawns = 2; pawns < 5; pawns++) {
 		for (int i = pawns - 2; i < 25; i++)
