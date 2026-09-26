@@ -1,10 +1,11 @@
 #include "Card.hpp"
-#include "TableBase.h"
+#include "TableBase.hpp"
 
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <future>
+#include <memory>
 
 
 int main(int, char**) {
@@ -18,17 +19,17 @@ int main(int, char**) {
 
 	if (1) {
 		// quickly run the 6 men test
-        auto tb = TableBase<6, false>::generate(CARDS, MEMORY_LIMIT);
+        auto tb = std::make_unique<TableBase<6>>(CARDS);
 	}
 
 
-    if (0) {
-        testIndexing(CARDS);
-    } else if (0) {
-		std::cout << "start" << std::endl;
-		exhaustiveIndexTest(CARDS);
-		std::cout << "done" << std::endl;
-	}
+    // if (0) {
+    //     testIndexing(CARDS);
+    // } else if (0) {
+	// 	std::cout << "start" << std::endl;
+	// 	exhaustiveIndexTest(CARDS);
+	// 	std::cout << "done" << std::endl;
+	// }
 	// if (1) {
     //     auto tb = TableBase<TB_MEN, false>::generate(CARDS, MEMORY_LIMIT);
 
