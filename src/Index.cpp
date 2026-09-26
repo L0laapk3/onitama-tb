@@ -30,28 +30,28 @@ void testOne(const CardsInfo& cards) {
 		const auto& startMoveBoard = startInv ? forwardOtherMoveBoard : reverseMoveBoard;
 		const auto& endMoveBoard = endInv ? forwardOtherMoveBoard : reverseMoveBoard;
 
-		iterateTBCounts<TB_MEN>(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
+		iterateTBCounts<TB_MEN>([&](U32 pieceCnt_kingsIndex, U32 rowSize) {
 			// std::cout << cardI << '\t' << pieceCountI << '\t' << kingI << " (" << _tzcnt_u64(bbk0) << ' ' << ik1 << ")\t" << p0Combinations << std::endl;
 
 			for (bi.pieceIndex = 0; bi.pieceIndex < rowSize; bi.pieceIndex++) {
-				Board board = indexToBoard<TB_MEN, startInv>(bi, startMoveBoard);
+				Board board = indexToBoard<TB_MEN, startInv>(bi);
 				if (board.isWinInOne<startInv>(startMoveBoard)) {
 					board.print();
 					std::cout << "index resolves to win in 1: (" << bi.pieceCnt_kingsIndex << " " << bi.pieceIndex << ")" << std::endl;
 					board.isWinInOne<startInv>(startMoveBoard);
-					indexToBoard<TB_MEN, startInv>(bi, startMoveBoard);
+					indexToBoard<TB_MEN, startInv>(bi);
 				}
 				board.bbp[0] &= (1ULL << 25) - 1;
 				board.bbp[1] &= (1ULL << 25) - 1;
 				if (startInv != endInv)
 					board = board.invert();
-				auto result = boardToIndex<TB_MEN, endInv>(board, endMoveBoard);
+				auto result = boardToIndex<TB_MEN, endInv>(board);
 				if (result.pieceCnt_kingsIndex != bi.pieceCnt_kingsIndex || result.pieceIndex != bi.pieceIndex) {
 					std::cout << "problem (" << bi.pieceCnt_kingsIndex << " " << bi.pieceIndex << "), (" << result.pieceCnt_kingsIndex << " " << result.pieceIndex << ")" << std::endl;
-					Board board2 = indexToBoard<TB_MEN, startInv>(bi, startMoveBoard);
+					Board board2 = indexToBoard<TB_MEN, startInv>(bi);
 					if (startInv != endInv)
 						board2 = board2.invert();
-					boardToIndex<TB_MEN, endInv>(board2, endMoveBoard);
+					boardToIndex<TB_MEN, endInv>(board2);
 				}
 			}
 		});
@@ -60,7 +60,7 @@ void testOne(const CardsInfo& cards) {
 
 
 void testIndexing(const CardsInfo& cards) {
-	
+
 	std::cout << "testing normal to normal" << std::endl;
 	testOne<false, false>(cards);
 
@@ -74,7 +74,7 @@ void testIndexing(const CardsInfo& cards) {
 	testOne<true, false>(cards);
 
 	std::cout << "test finished!" << std::endl;
-				
+
 }
 
 
@@ -123,11 +123,11 @@ void exhaustiveIndexTest(const CardsInfo& cards) {
 								};
 
 								if (!board.isWinInOne<true>(reverseMoveBoard)) {
-									auto bi = boardToIndex<TB_MEN, true>(board, reverseMoveBoard);
+									auto bi = boardToIndex<TB_MEN, true>(board);
 									if (bi.pieceCnt_kingsIndex == 3271 && bi.pieceIndex == 179064700) {
-										auto bi = boardToIndex<TB_MEN, true>(board, reverseMoveBoard);
+										auto bi = boardToIndex<TB_MEN, true>(board);
 									}
-									auto result = indexToBoard<TB_MEN, true>(bi, reverseMoveBoard);
+									auto result = indexToBoard<TB_MEN, true>(bi);
 									if (result.bbp[0] != board.bbp[0] || result.bbp[1] != board.bbp[1] || result.bbk[0] != board.bbk[0] || result.bbk[1] != board.bbk[1]) {
 										std::cout << "problem: " << bi.pieceCnt_kingsIndex << ' ' << bi.pieceIndex << std::endl;
 										board.print();
@@ -136,8 +136,8 @@ void exhaustiveIndexTest(const CardsInfo& cards) {
 										std::cout << std::endl;
 										if (result.isWinInOne<true>(reverseMoveBoard))
 											std::cout << "double wtf" << std::endl;
-										boardToIndex<TB_MEN, true>(board, reverseMoveBoard);
-										indexToBoard<TB_MEN, true>(bi, reverseMoveBoard);
+										boardToIndex<TB_MEN, true>(board);
+										indexToBoard<TB_MEN, true>(bi);
 									}
 									noWinIn1Count++;
 								}
@@ -145,6 +145,6 @@ void exhaustiveIndexTest(const CardsInfo& cards) {
 							}
 					}
 	}
-	
+
 	std::cout << "test finished! Tested " << count << " boards, " << noWinIn1Count << " were no win in 1" << std::endl;
 }

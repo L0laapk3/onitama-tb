@@ -306,7 +306,7 @@ struct BoardToIndexIntermediate {
 // boardToIndex<false>(board): given a board with player 0 to move, returns unique index for that board
 // boardToIndex<true>(board): same but for player 1. Identical to boardToIndex<false>(board.invert())
 template <U16 TB_MEN, bool invert>
-BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMoveBoard, BoardToIndexIntermediate<TB_MEN>& im) {
+BoardIndex INLINE_INDEX_FN boardToIndex(Board board, BoardToIndexIntermediate<TB_MEN>& im) {
 	if (invert) {
 		std::swap(board.bbp[0], board.bbp[1]);
 		std::swap(board.bbk[0], board.bbk[1]);
@@ -326,9 +326,9 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	U32 rpc = OFFSET_LOOKUP<TB_MEN>[pp0cnt][pp1cnt];
 
 	// prevent king wins: any squares threatening the p1 king need to be masked out for p0.
-	U64 p0CompactMask = board.bbk[0] | board.bbk[1] | reverseMoveBoard[im.ik1];
+	U64 p0CompactMask = board.bbk[0] | board.bbk[1];
 	// prevent temple wins: if p0 king is threatening temple win, one pawn needs to block the temple.
-	bool templeWin = reverseMoveBoard[PTEMPLE[invert]] & board.bbk[0];
+	bool templeWin = false; //reverseMoveBoard[PTEMPLE[invert]] & board.bbk[0];
 	if (templeWin) {
 		assert(board.bbp[0] & (1 << PTEMPLE[invert]));
 		board.bbp[0] &= ~(1 << PTEMPLE[invert]);
@@ -352,14 +352,14 @@ BoardIndex INLINE_INDEX_FN boardToIndex(Board board, const MoveBoard& reverseMov
 	return bi;
 }
 template <U16 TB_MEN, bool invert>
-BoardIndex __attribute__((always_inline)) inline boardToIndex(Board board, const MoveBoard& reverseMoveBoard) {
+BoardIndex __attribute__((always_inline)) inline boardToIndex(Board board) {
 	BoardToIndexIntermediate<TB_MEN> im;
-	return boardToIndex<TB_MEN, invert>(board, reverseMoveBoard, im);
+	return boardToIndex<TB_MEN, invert>(board, im);
 }
 
 
 template <U16 TB_MEN, bool invert>
-BoardIndex INLINE_INDEX_FN boardToIndexFromIntermediate(Board board, const MoveBoard& reverseMoveBoard, BoardIndex& bi, BoardToIndexIntermediate<TB_MEN>& im) {
+BoardIndex INLINE_INDEX_FN boardToIndexFromIntermediate(Board board, BoardIndex& bi, BoardToIndexIntermediate<TB_MEN>& im) {
 	if (invert) {
 		std::swap(board.bbp[0], board.bbp[1]);
 		std::swap(board.bbk[0], board.bbk[1]);
@@ -367,9 +367,9 @@ BoardIndex INLINE_INDEX_FN boardToIndexFromIntermediate(Board board, const MoveB
 
 	board.bbp[0] &= ~board.bbk[0];
 
-	U64 p0CompactMask = board.bbk[0] | board.bbk[1] | reverseMoveBoard[im.ik1];
+	U64 p0CompactMask = board.bbk[0] | board.bbk[1];
 
-	bool templeWin = reverseMoveBoard[PTEMPLE[invert]] & board.bbk[0];
+	bool templeWin = false; // reverseMoveBoard[PTEMPLE[invert]] & board.bbk[0];
 	if (templeWin) {
 		assert(board.bbp[0] & (1 << PTEMPLE[invert]));
 		board.bbp[0] &= ~(1 << PTEMPLE[invert]);
@@ -392,7 +392,7 @@ BoardIndex INLINE_INDEX_FN boardToIndexFromIntermediate(Board board, const MoveB
 // indexToBoard<false>(index): given a unique index, returns the board with player 0 to move
 // indexToBoard<true>(index): same but returns a board with player 1 to move. Identical to indexToBoard<false>(index).invert()
 template<U16 TB_MEN, bool invert>
-Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBoard) {
+Board INLINE_INDEX_FN indexToBoard(BoardIndex bi) {
 
 	U32 rk = bi.pieceCnt_kingsIndex % KINGSMULT;
 	U32 rpc = bi.pieceCnt_kingsIndex / KINGSMULT;
@@ -404,11 +404,12 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 	// p0 is not allowed to have any pieces on these squares:
 	// - the squares occupied by the two kings
 	// - the squares from which p1's king can be taken
-	U64 p0CompactMask = bbk0 | bbk1 | reverseMoveBoard[ik1];
+	// U64 p0CompactMask = bbk0 | bbk1 | reverseMoveBoard[ik1];
+	U64 p0CompactMask = bbk0 | bbk1;
 
 	// if p0 is threating a temple win, a pawn needs to block the temple. One pawn will be subtracted from p0,
 	// and all other pawns will not be allowed to be on the temple square, so it is added to the mask.
-	bool templeWin = reverseMoveBoard[PTEMPLE[invert]] & bbk0;
+	bool templeWin = false; // reverseMoveBoard[PTEMPLE[invert]] & bbk0;
 	if (templeWin) {
 		p0CompactMask |= 1ULL << PTEMPLE[invert];
 	}
@@ -461,7 +462,7 @@ Board INLINE_INDEX_FN indexToBoard(BoardIndex bi, const MoveBoard& reverseMoveBo
 
 
 template <U16 TB_MEN>
-void iterateTBCounts(const MoveBoard& reverseMoveBoard, std::function<void(U32, U32)> cb) {
+void iterateTBCounts(std::function<void(U32, U32)> cb) {
 	for (U64 pieceCountI = 0; pieceCountI < PIECECOUNTMULT<TB_MEN>; pieceCountI++) {
 		auto& pc = OFFSET_ORDER<TB_MEN>[pieceCountI];
 		for (U64 kingI = 0; kingI < KINGSMULT; kingI++) {
@@ -472,24 +473,24 @@ void iterateTBCounts(const MoveBoard& reverseMoveBoard, std::function<void(U32, 
 			std::tie(bbk0, bbk1) = TABLES_BBKINGS[0][kingI];
 			U64 ik1 = _tzcnt_u64(bbk1);
 
-			U64 p0mask = bbk0 | bbk1 | reverseMoveBoard[ik1];
+			U64 p0mask = bbk0 | bbk1;
 
-			if (reverseMoveBoard[ik1] & bbk0)
-				rowSize = 0;
-			else {
-				bool templeWinThreatened = reverseMoveBoard[PTEMPLE[0]] & bbk0;
-				if (templeWinThreatened && ((pc.first == 0) || (reverseMoveBoard[ik1] & (1 << PTEMPLE[0]))))
-					rowSize = 0;
-				else {
-					if (templeWinThreatened)
-						p0mask |= 1 << PTEMPLE[0];
+			// if (reverseMoveBoard[ik1] & bbk0)
+			// 	rowSize = 0;
+			// else {
+				bool templeWinThreatened = false; // reverseMoveBoard[PTEMPLE[0]] & bbk0;
+				// if (templeWinThreatened && ((pc.first == 0) || (reverseMoveBoard[ik1] & (1 << PTEMPLE[0]))))
+				// 	rowSize = 0;
+				// else {
+				// 	if (templeWinThreatened)
+				// 		p0mask |= 1 << PTEMPLE[0];
 
 					U64 p0Options = 25 - _popcnt64(p0mask);
 					U64 p0Combinations = templeWinThreatened && !pc.first ? 0 : fact(p0Options, p0Options-(pc.first-templeWinThreatened)) / fact(pc.first-templeWinThreatened);
 					U64 p1Combinations = fact(23-pc.first, 23-pc.first-pc.second) / fact(pc.second);
 					rowSize = p0Combinations * p1Combinations;
-				}
-			}
+				// }
+			// }
 
 			cb(pieceCnt_kingsIndex, rowSize);
 		}

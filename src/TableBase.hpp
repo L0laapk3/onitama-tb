@@ -93,7 +93,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 
 
 		U64 rows = 0, size = 0;
-		iterateTBCounts<TB_MEN>(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
+		iterateTBCounts<TB_MEN>([&](U32 pieceCnt_kingsIndex, U32 rowSize) {
 			rows += (rowSize + NUM_BOARDS_PER_ENTRY<STORE_WIN> - 1) / NUM_BOARDS_PER_ENTRY<STORE_WIN>;
 			size += rowSize;
 		});
@@ -116,7 +116,7 @@ std::unique_ptr<TableBase<TB_MEN, STORE_WIN>> TableBase<TB_MEN, STORE_WIN>::gene
 
 		U32 passedRowsCount = 0;
 		// set final bits to resolved.
-		iterateTBCounts<TB_MEN>(reverseMoveBoard, [&](U32 pieceCnt_kingsIndex, U32 rowSize) {
+		iterateTBCounts<TB_MEN>([&](U32 pieceCnt_kingsIndex, U32 rowSize) {
 			cardTb.refs[pieceCnt_kingsIndex] = passedRowsCount;
 			if (rowSize == 0)
 				return;
@@ -358,7 +358,7 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 					U64 bitIndex = sizeof(bits) == 4 ? _tzcnt_u32(bits) : _tzcnt_u64(bits);
 					bi.pieceIndex = pieceIndex + bitIndex;
 
-					Board board = indexToBoard<TB_MEN, 1>(bi, moveBoard_p1_card01); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
+					Board board = indexToBoard<TB_MEN, 1>(bi); // inverted because index assumes p0 to move and we are looking for the board with p1 to move
 
 					bool isTempleThreatened = board.isTempleKingInRange<0>(moveBoard_p0_card01_rev);
 					if (!(isTempleThreatened && board.isTempleFree<0>())) { // if p0 can just walk to temple
@@ -398,7 +398,7 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 											.bbk = { board.bbk[0], isKingMove ? landPiece : board.bbk[1] },
 										};
 
-										auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card01_rev); // the resulting board has p0 to move and needs to be a win
+										auto ti = boardToIndex<TB_MEN, 0>(targetBoard); // the resulting board has p0 to move and needs to be a win
 
 										bool oneTrue = false;
 										if (landPiece & moveBoard_p1_card0_or_01[pp]) {
@@ -474,14 +474,14 @@ void singleDepthPass(const CardsInfo& cards, U8 invCardI, TableBase<TB_MEN, STOR
 
 										if (!isWinInOne0) {
 											BoardToIndexIntermediate<TB_MEN> im;
-											auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card1side_rev, im);
+											auto ti = boardToIndex<TB_MEN, 0>(targetBoard, im);
 											p0ReverseTargetRow0[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_ENTRY<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti.pieceIndex % NUM_BOARDS_PER_ENTRY<STORE_WIN>), std::memory_order_relaxed);
 											if (!isWinInOne1) {
-												auto ti1 = boardToIndexFromIntermediate<TB_MEN, 0>(targetBoard, moveBoard_p0_card0side_rev, ti, im);
+												auto ti1 = boardToIndexFromIntermediate<TB_MEN, 0>(targetBoard, ti, im);
 												p0ReverseTargetRow1[ti1.pieceCnt_kingsIndex][ti1.pieceIndex / NUM_BOARDS_PER_ENTRY<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti1.pieceIndex % NUM_BOARDS_PER_ENTRY<STORE_WIN>), std::memory_order_relaxed);
 											}
 										} else if (!isWinInOne1) {
-											auto ti = boardToIndex<TB_MEN, 0>(targetBoard, moveBoard_p0_card0side_rev);
+											auto ti = boardToIndex<TB_MEN, 0>(targetBoard);
 											p0ReverseTargetRow1[ti.pieceCnt_kingsIndex][ti.pieceIndex / NUM_BOARDS_PER_ENTRY<STORE_WIN>].fetch_or(getWinBits<STORE_WIN>(ti.pieceIndex % NUM_BOARDS_PER_ENTRY<STORE_WIN>), std::memory_order_relaxed);
 										}
 									}
