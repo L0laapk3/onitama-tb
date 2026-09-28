@@ -1,4 +1,4 @@
-export module onitama_tb:table_base;
+export module tb:table_base;
 import std;
 import :types;
 import :card;

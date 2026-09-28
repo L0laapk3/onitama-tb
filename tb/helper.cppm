@@ -1,4 +1,4 @@
-export module onitama_tb:helper;
+export module tb:helper;
 import std;
 import :types;
 

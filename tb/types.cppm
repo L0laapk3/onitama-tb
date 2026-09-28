@@ -1,4 +1,4 @@
-export module onitama_tb:types;
+export module tb:types;
 import std;
 
 export using U8 = std::uint8_t;

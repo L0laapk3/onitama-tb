@@ -1,4 +1,4 @@
-export module onitama_tb;
+export module tb;
 export import :types;
 export import :helper;
 export import :card;

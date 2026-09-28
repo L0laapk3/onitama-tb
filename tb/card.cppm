@@ -1,4 +1,4 @@
-export module onitama_tb:card;
+export module tb:card;
 import std;
 import :types;
 

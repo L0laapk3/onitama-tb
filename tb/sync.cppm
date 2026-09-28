@@ -1,4 +1,4 @@
-export module onitama_tb:sync;
+export module tb:sync;
 import std;
 
 export class Sync {

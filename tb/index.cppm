@@ -1,6 +1,6 @@
 module;
 #include <immintrin.h>
-export module onitama_tb:index;
+export module tb:index;
 import std;
 import :types;
 import :helper;

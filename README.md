@@ -7,8 +7,8 @@ Endgame tablebase generator for Onitama (work in progress).
 Requires Bazel 9.2+, Clang 23 with libc++, and `lld-23`.
 
 ```bash
-bazel build //onitama_tb:onitama_tb --config=dbg
-bazel run //onitama_tb:onitama_tb --config=rel
+bazel build //tb:onitama_tb --config=dbg
+bazel run //tb:onitama_tb --config=rel
 ```
 
 Optional: install `tools/bazel` as a wrapper (see [on3tama](https://github.com)) to default `--config=dbg`.
@@ -21,4 +21,4 @@ bazel run @hedron_compile_commands//:refresh_all
 
 ## Layout
 
-- `onitama_tb/` — C++26 modules (`onitama_tb:table_base` holds the generator logic from the former `TableBase.hpp`).
+- `onitama_tb/` — C++26 modules (`tb:table_base` holds the generator logic from the former `TableBase.hpp`).
