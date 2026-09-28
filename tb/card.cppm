@@ -98,21 +98,27 @@ export constexpr std::array<U8, 30> CARDS_INVERT = {
 	10, 8, 7, 13, 12, 11, 9, 2, 1, 6, 0, 5, 4, 3, 27, 25, 29, 28, 26, 24, 23, 22, 21, 20, 19, 15, 18, 14, 17, 16
 };
 
-export constexpr std::array<std::array<U8, 12>, 5> CARDS_USED_IN = {{
-	{ 10, 4,  2,  13, 11, 8,  14, 6,  19, 15, 28, 23 },
-	{ 10, 7,  12, 13, 1,  5,  14, 24, 9,  16, 18, 21 },
-	{ 4,  7,  0,  11, 1,  3,  15, 20, 17, 16, 22, 26 },
-	{ 2,  12, 0,  6,  24, 27, 28, 20, 25, 18, 22, 29 },
-	{ 8,  5,  3,  19, 9,  27, 23, 17, 25, 21, 26, 29 },
-}};
+// Player `player` has card i in these indices of permutations.
+export template<bool player>
+constexpr auto P_HAS_CARD_IN = []{
+	std::array<std::array<U8, 12>, 5> result{};
+	std::array<U8, 5> counts{};
+	for (U8 p = 0; p < CARDS_PERMUTATIONS.size(); p++) {
+		for (U8 card : CARDS_PERMUTATIONS[p].playerCards[player])
+			result[card][counts[card]++] = p;
+	}
+	return result;
+}();
 
-export constexpr auto CARDS_USED_IN_MASK = [] {
+export template<bool player>
+constexpr auto P_HAS_CARD_IN_MASK = [] {
 	std::array<U32, 5> a{0};
 	for (int i = 0; i < 5; i++)
 		for (int j = 0; j < 12; j++)
-			a[i] |= 1U << CARDS_USED_IN[i][j];
+			a[i] |= 1U << P_HAS_CARD_IN<player>[i][j];
 	return a;
 }();
+
 
 export using MoveBoard = std::array<U32, 25>;
 
@@ -169,27 +175,47 @@ export struct CardsInfo {
 	MoveBoardSet moveBoardsReverse = generateMoveBoardSet<true>(cards);
 };
 
-export constexpr U32 unuse_card0_unmasked(U32 entry) {
+
+// TODO these are def wrong
+export constexpr U32 p0_use_card0_unmasked(U32 entry) {
 	return (entry >> 10) | (entry << 20);
 }
-
-export constexpr U32 unuse_card1_unmasked(U32 entry) {
+export constexpr U32 p0_use_card1_unmasked(U32 entry) {
+	return (entry >> 20) | (entry << 10);
+}
+export constexpr U32 p1_use_card0_unmasked(U32 entry) {
+	return (entry >> 10) | (entry << 20);
+}
+export constexpr U32 p1_use_card1_unmasked(U32 entry) {
 	return (entry >> 20) | (entry << 10);
 }
 
-// Per-square masks for the two 10-bit card slots in a table entry (WIP).
-export constexpr auto CARD0_USED_IN_MOVE = [] {
+// Per-square masks for the two 10-bit card slots in a table entry (TODO).
+export constexpr auto P0_CARD0_USED_IN_MOVE_MASK = [] {
 	constexpr U32 slot = (1U << 10) - 1;
 	std::array<U32, 25> masks{};
 	for (auto& m : masks)
-		m = slot;
+		m = ~slot;
 	return masks;
 }();
-
-export constexpr auto CARD1_USED_IN_MOVE = [] {
+export constexpr auto P0_CARD1_USED_IN_MOVE_MASK = [] {
 	constexpr U32 slot = ((1U << 10) - 1) << 10;
 	std::array<U32, 25> masks{};
 	for (auto& m : masks)
-		m = slot;
+		m = ~slot;
+	return masks;
+}();
+export constexpr auto P1_CARD0_USED_IN_MOVE_MASK = [] {
+	constexpr U32 slot = (1U << 10) - 1;
+	std::array<U32, 25> masks{};
+	for (auto& m : masks)
+		m = ~slot;
+	return masks;
+}();
+export constexpr auto P1_CARD1_USED_IN_MOVE_MASK = [] {
+	constexpr U32 slot = ((1U << 10) - 1) << 10;
+	std::array<U32, 25> masks{};
+	for (auto& m : masks)
+		m = ~slot;
 	return masks;
 }();
