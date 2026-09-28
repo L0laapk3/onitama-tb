@@ -1,0 +1,13 @@
+bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
+git_override(
+    module_name = "hedron_compile_commands",
+    remote = "https://github.com/helly25/bazel-compile-commands-extractor.git",
+    branch = "main",
+)
+
+bazel_dep(name = "rules_cc", version = "0.2.22")
+git_override(
+    module_name = "rules_cc",
+    remote = "https://github.com/PikachuHyA/rules_cc.git",
+    branch = "support_std_module",
+)

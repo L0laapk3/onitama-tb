@@ -1,0 +1,35 @@
+build --repo_env=CC=clang-23
+build --action_env=CC=clang-23
+build --linkopt=-fuse-ld=lld-23
+build --cxxopt='-std=c++26'
+build --cxxopt=-fcolor-diagnostics
+
+common --experimental_cpp_modules
+common --repo_env=BAZEL_DETECT_STD_MODULE=1
+build --features=cpp_modules
+build --features=std_module
+build --cxxopt=-fmodules-embed-all-files
+build --repo_env=BAZEL_LINKLIBS=-lc++:-lm
+build --repo_env=BAZEL_CXXOPTS=-std=c++26:-stdlib=libc++
+build --linkopt=-stdlib=libc++
+
+build --cpu=local
+build --cxxopt='-march=native'
+build --cxxopt='-fconstexpr-steps=10000000'
+
+build --cxxopt='-Wall'
+build --cxxopt='-Werror'
+build --cxxopt='-Wno-unused-parameter'
+build --cxxopt='-Wno-unused-variable'
+build --cxxopt='-Wno-unused-but-set-variable'
+build --cxxopt='-Wno-unused-function'
+build --cxxopt='-Wno-missing-braces'
+build --cxxopt='-Wno-TU-local-entity-exposure'
+
+build:rel --copt=-O3 --copt=-ffast-math --copt=-flto --linkopt=-flto
+build:rel --strip=always
+
+build:dbg --copt=-g --copt=-O0
+build:dbg --strip=never
+build:dbg --copt=-fno-omit-frame-pointer
+build:dbg --compilation_mode=dbg

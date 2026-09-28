@@ -1,5 +1,15 @@
-#include "Sync.h"
+export module onitama_tb:sync;
+import std;
 
+export class Sync {
+	std::array<std::atomic<int>, 2> counters{0};
+	bool csel = false;
+
+public:
+	bool slaveNotifyWait();
+	void masterWait(int numThreads);
+	void masterNotify(int numThreads);
+};
 
 bool Sync::slaveNotifyWait() {
 	auto& counter = counters[csel];
