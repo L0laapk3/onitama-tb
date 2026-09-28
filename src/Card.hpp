@@ -114,6 +114,14 @@ constexpr std::array<std::array<U8, 12>, 5> CARDS_USED_IN = {{
 	{ 8,  5,  3,  19, 9,  27, 23, 17, 25, 21, 26, 29 },
 }};
 
+constexpr auto CARDS_USED_IN_MASK = []{
+	std::array<U32, 5> a{0};
+	for (int i = 0; i < 5; i++)
+		for (int j = 0; j < 12; j++)
+			a[i] |= 1U << CARDS_USED_IN[i][j];
+	return a;
+}();
+
 
 // output cardI
 constexpr std::array<U8, 10> CARDS_P0_PAIRS = { 10, 4, 2, 7, 12, 0, 8, 5, 3, 27 };
@@ -153,16 +161,22 @@ constexpr auto combineMoveBoards(const MoveBoard& a, const MoveBoard& b) {
 
 
 
-
-typedef std::array<U32, 5> CardSet;
-typedef std::array<MoveBoard, 5> MoveBoardSet;
+using CardSet =  std::array<U32, 5>;
+struct MoveBoardSet {
+	MoveBoard all;
+	std::array<MoveBoard, 5> moveBoards;
+};
 
 template<bool invert>
 constexpr auto generateMoveBoardSet(const CardSet& cards) {
-	MoveBoardSet moveBoards;
-	for (U64 i = 0; i < 5; i++)
-		moveBoards[i] = generateMoveBoard<invert>(cards[i]);
-    return moveBoards;
+	MoveBoardSet set;
+	U32 all = 0;
+	for (U64 i = 0; i < 5; i++) {
+		all |= cards[i];
+		set.moveBoards[i] = generateMoveBoard<invert>(cards[i]);
+	}
+	set.all = generateMoveBoard<invert>(all);
+    return set;
 }
 
 
@@ -203,3 +217,19 @@ constexpr auto UNLOAD_ORDER = []() {
 	}
 	return order;
 }();
+
+
+
+// TODO: verify if card order is correct for this
+U32 unuse_card0(U32 entry) {
+	return (entry >> 10) | ((entry << 20) & ((1U << 30) - 1));
+}
+U32 unuse_card1(U32 entry) {
+	return (entry >> 20) | ((entry << 10) & ((1U << 30) - 1));
+}
+U32 unuse_card0_unmasked(U32 entry) {
+	return (entry >> 10) | (entry << 20);
+}
+U32 unuse_card1_unmasked(U32 entry) {
+	return (entry >> 20) | (entry << 10);
+}

@@ -22,10 +22,10 @@ struct TableBase {
 	};
 
 	template <U16 ROW_I>
-	using TableKingPermsP1 = std::array<CardsEntry, TB_MEN_ORDER<TB_MEN>[ROW_I].second + 1>;
+	using TableKingPermsP1 = std::array<CardsEntry, PIECE_COUNTS<TB_MEN>[ROW_I].p1c>;
 
 	template <U16 ROW_I>
-	using TableKingPermsP0 = std::array<TableKingPermsP1<ROW_I>, TB_MEN_ORDER<TB_MEN>[ROW_I].first + 1>;
+	using TableKingPermsP0 = std::array<TableKingPermsP1<ROW_I>, PIECE_COUNTS<TB_MEN>[ROW_I].p0c>;
 
 	template <U16 ROW_I>
 	using TableP1 = std::array<TableKingPermsP0<ROW_I>, PAWNTABLE_P1<TB_MEN, ROW_I>.size()>;
@@ -38,7 +38,7 @@ struct TableBase {
 	template <std::size_t... I>
 	static auto tableBaseStorage(std::index_sequence<I...>) -> std::tuple<TableRow<I>...>;
 
-	using TableBaseStorage = decltype(tableBaseStorage(std::make_index_sequence<TB_MEN_ORDER<TB_MEN>.size()>{}));
+	using TableBaseStorage = decltype(tableBaseStorage(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{}));
 
 
 
