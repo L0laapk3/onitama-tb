@@ -1,4 +1,4 @@
-import onitama_tb;
+import tb;
 import std;
 
 auto main() -> int {

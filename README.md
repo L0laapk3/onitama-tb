@@ -21,4 +21,4 @@ bazel run @hedron_compile_commands//:refresh_all
 
 ## Layout
 
-- `onitama_tb/` — C++26 modules (`tb:table_base` holds the generator logic from the former `TableBase.hpp`).
+- `onitama_tb/` — C++26 modules (`tb:tablebase` holds the generator logic from the former `TableBase.hpp`).

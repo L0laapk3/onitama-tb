@@ -1,11 +1,11 @@
-export module tb:table_base;
+export module tb:tablebase;
 import std;
 import :types;
 import :card;
 import :index;
 import :sync;
 
-namespace table_base_impl {
+namespace tablebase_impl {
 
 struct ThreadObj {
 	Sync sync;
@@ -41,6 +41,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 						if (!entry)
 							continue;
 
+						// reverse movegen - check if all moves that lead to this entry have been resolved
 						U32 sourcePieces = bbp1;
 						for (int iSrc = 0; iSrc < PIECE_COUNTS<TB_MEN>[ROW].p1c; iSrc++) {
 							const U32 sourcePiece = sourcePieces & -sourcePieces;
@@ -79,6 +80,8 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 
 						if (!entry)
 							continue;
+
+						// forward movegen
 					}
 				}
 			}
@@ -139,7 +142,7 @@ void runTableBaseBuild(const CardsInfo& cards, Table& table) {
 		thread.join();
 }
 
-} // namespace table_base_impl
+} // namespace tablebase_impl
 
 export template <U16 TB_MEN>
 struct TableBase {
@@ -165,7 +168,7 @@ struct TableBase {
 	using TableBaseStorage = decltype(tableBaseStorage(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{}));
 
 	explicit TableBase(const CardsInfo& cards) {
-		table_base_impl::runTableBaseBuild<TB_MEN>(cards, *this);
+		tablebase_impl::runTableBaseBuild<TB_MEN>(cards, *this);
 	}
 
 	TableBaseStorage tb;
