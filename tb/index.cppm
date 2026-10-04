@@ -46,12 +46,26 @@ constexpr auto& PAWNTABLE_P0 = PIECE_PLACEMENTS<25, PIECE_COUNTS<TB_MEN>[ROW].p0
 export template <U16 TB_MEN, std::size_t ROW>
 constexpr auto& PAWNTABLE_P1 = PIECE_PLACEMENTS<25 - PIECE_COUNTS<TB_MEN>[ROW].p0c, PIECE_COUNTS<TB_MEN>[ROW].p1c>;
 
+template <U32 BITS, std::size_t N>
+constexpr auto reversePlacements(const std::array<U32, N>& placements) {
+	std::array<U32, N> a;
+	for (std::size_t i = 0; i < N; i++)
+		a[i] = __builtin_bitreverse32(placements[i]) >> (32 - BITS);
+	return a;
+}
+
+export template <U16 TB_MEN, std::size_t ROW>
+constexpr auto PAWNTABLE_P0_INV = reversePlacements<25>(PAWNTABLE_P0<TB_MEN, ROW>);
+
+export template <U16 TB_MEN, std::size_t ROW>
+constexpr auto PAWNTABLE_P1_INV = reversePlacements<25 - PIECE_COUNTS<TB_MEN>[ROW].p0c>(PAWNTABLE_P1<TB_MEN, ROW>);
+
 export template <U16 TB_MEN, std::size_t ROW, bool invert>
 U32 unrankFirstPieces(int ip) {
 	if constexpr (!invert)
 		return PAWNTABLE_P0<TB_MEN, ROW>[ip];
 	else
-		return PAWNTABLE_P0<TB_MEN, ROW>[PAWNTABLE_P0<TB_MEN, ROW>.size() - 1 - ip];
+		return PAWNTABLE_P0_INV<TB_MEN, ROW>[ip];
 }
 
 export template <U16 TB_MEN, std::size_t ROW, bool invert>
@@ -59,7 +73,7 @@ U32 unrankSecondPieces(int ip, U32 bbpOther) {
 	if constexpr (!invert)
 		return _pdep_u32(PAWNTABLE_P1<TB_MEN, ROW>[ip], ~bbpOther);
 	else
-		return _pdep_u32(PAWNTABLE_P1<TB_MEN, ROW>[PAWNTABLE_P1<TB_MEN, ROW>.size() - 1 - ip] << (PIECE_COUNTS<TB_MEN>[ROW].p0c), ~bbpOther);
+		return _pdep_u32(PAWNTABLE_P1_INV<TB_MEN, ROW>[ip], ~bbpOther);
 }
 
 template <U16 TB_MEN, std::size_t ROW, bool first, bool invert>
@@ -67,19 +81,19 @@ U32 unrankKings(int ik, U32 bbp) {
 	if constexpr (!invert)
 		return _pdep_u32(1U << ik, bbp);
 	else if constexpr (first)
-		return _pdep_u32(1U << PIECE_COUNTS<TB_MEN>[ROW].p0c >> ik, bbp);
+		return _pdep_u32(1U << (PIECE_COUNTS<TB_MEN>[ROW].p0c - 1) >> ik, bbp);
 	else
-		return _pdep_u32(1U << PIECE_COUNTS<TB_MEN>[ROW].p1c >> ik, bbp);
+		return _pdep_u32(1U << (PIECE_COUNTS<TB_MEN>[ROW].p1c - 1) >> ik, bbp);
 }
 
 export template <U16 TB_MEN, std::size_t ROW, bool invert>
 U32 unrankFirstKing(int ik, U32 bbp) {
-	return unrankKings<TB_MEN, ROW, false, invert>(ik, bbp);
+	return unrankKings<TB_MEN, ROW, true, invert>(ik, bbp);
 }
 
 export template <U16 TB_MEN, std::size_t ROW, bool invert>
 U32 unrankSecondKing(int ik, U32 bbp) {
-	return unrankKings<TB_MEN, ROW, true, invert>(ik, bbp);
+	return unrankKings<TB_MEN, ROW, false, invert>(ik, bbp);
 }
 
 export template <U16 TB_MEN, std::size_t ROW, bool invert>
