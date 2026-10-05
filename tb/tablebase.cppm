@@ -55,16 +55,14 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 							// RMWs to keep those marks.
 							Board board{ bbp0, bbp1, bbk0, bbk1 };
 							if (board.isTempleEnded()) { // Win in 0
-								cardsEntry.store(CARD_PERMS_MASK, std::memory_order_relaxed);
+								cardsEntry.store(0, std::memory_order_relaxed);
 								continue;
 							}
 							const U32 winInOneCards = board.getWinInOneCards<1>(cards.moveBoardsForward);
-							cardsEntry.fetch_or(winInOneCards, std::memory_order_relaxed);
-							entry = CARD_PERMS_MASK ^ winInOneCards;
-							// entry = ~(cardsEntry.fetch_or(winInOneCards, std::memory_order_relaxed) | winInOneCards) & CARD_PERMS_MASK;
+							entry = cardsEntry.fetch_and(~winInOneCards, std::memory_order_relaxed) & ~winInOneCards;
 						} else {
-							// loop over all entries, when a stored bit is 0 that means the entry is still unresolved.
-							if (!(entry = CARD_PERMS_MASK ^ cardsEntry.load(std::memory_order_relaxed)))
+							// loop over all entries, when a stored bit is 1 that means the entry is still unresolved.
+							if (!(entry = cardsEntry.load(std::memory_order_relaxed)))
 								continue;
 						}
 						U32 newEntries = 0;
@@ -94,7 +92,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 										unresolvedAfterMove |= unresolvedChild & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)];
 									} else {
 										const bool isTakeMove = landPiece & bbp0;
-										U32 otherEntry; // resolved bits of the child
+										U32 otherEntry; // unresolved bits of the child
 										if (!isTakeMove) {
 											const int ip1_new = rankSecondPieces<TB_MEN, MIRROR_ROW, false>(bbp1_new, bbp0);
 											const int ik1_new = rankSecondKing<TB_MEN, MIRROR_ROW, false>(bbk1_new, bbp1_new);
@@ -112,7 +110,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 											}
 										}
 
-										unresolvedAfterMove |= ~otherEntry & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)];
+										unresolvedAfterMove |= otherEntry & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)];
 									}
 								}
 							}
@@ -126,7 +124,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 						// Reload after the acquire loads of the children: a child that was seen resolved as a loss has
 						// already marked its parents (this entry) before releasing, so those win bits must not count as lost.
 						if constexpr (STEP > 1)
-							entry &= ~cardsEntry.load(std::memory_order_acquire);
+							entry &= cardsEntry.load(std::memory_order_acquire);
 						const U32 lost = entry & ~newEntries;
 						if (!lost)
 							continue;
@@ -151,7 +149,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 									const int ik1_new = rankSecondKing<TB_MEN, MIRROR_ROW, false>(bbk1, bbp1);
 
 									const U32 newEntryBits = unmoveCardEntry(lost & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)]);
-									std::get<MIRROR_ROW>(tb)[ip0_new][ip1_new][ik0_new][ik1_new].fetch_or(newEntryBits, std::memory_order_relaxed);
+									std::get<MIRROR_ROW>(tb)[ip0_new][ip1_new][ik0_new][ik1_new].fetch_and(~newEntryBits, std::memory_order_relaxed);
 
 									if constexpr (PC.p0c < TB_MEN / 2) {
 										const U32 bbp1_untaken = bbp1 | sourcePiece;
@@ -159,14 +157,14 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 										const int ip1_untaken = rankSecondPieces<TB_MEN, P1_UNTAKEN_ROW, false>(bbp1_untaken, bbp0_new); // TODO incremental?
 										const int ik0_untaken = rankFirstKing<TB_MEN, P1_UNTAKEN_ROW, false>(bbk0_new, bbp0_new);
 										const int ik1_untaken = rankSecondKing<TB_MEN, P1_UNTAKEN_ROW, false>(bbk1, bbp1_untaken);
-										std::get<P1_UNTAKEN_ROW>(tb)[ip0_untaken][ip1_untaken][ik0_untaken][ik1_untaken].fetch_or(newEntryBits, std::memory_order_relaxed);
+										std::get<P1_UNTAKEN_ROW>(tb)[ip0_untaken][ip1_untaken][ik0_untaken][ik1_untaken].fetch_and(~newEntryBits, std::memory_order_relaxed);
 									}
 								}
 							}
 						}
 
 						// Only after the reverse movegen, so a thread that sees these bits set also sees the parents marked.
-						cardsEntry.fetch_or(lost, std::memory_order_release);
+						cardsEntry.fetch_and(~lost, std::memory_order_release);
 						updated = true;
 					}
 				}
@@ -182,12 +180,12 @@ void singleDepthPass(const CardsInfo& cards, Storage& tb, std::atomic<U64>& chun
 	U64 rowStartChunk = 0;
 
 	[&]<U32... ROW>(std::integer_sequence<U32, ROW...>) {
-		(processRow<TB_MEN, ROW, STEP>(cards, tb, chunk, rowStartChunk, chunkCounter, updated), ...);
+		(processRow<TB_MEN, std::tuple_size_v<Storage> - 1 - ROW, STEP>(cards, tb, chunk, rowStartChunk, chunkCounter, updated), ...);
 	}(std::make_integer_sequence<U32, std::tuple_size_v<Storage>>{});
 }
 
 template <typename Storage>
-U64 countResolved(const Storage& tb) {
+U64 countUnresolved(const Storage& tb) {
 	// Only called while the workers are idle, so the entries are read as plain U64 words.
 	constexpr U64 CHUNK_WORDS = 1 << 16;
 	std::vector<std::span<const U64>> chunks;
@@ -273,10 +271,10 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, U64 stopAtIteration,
 		const std::chrono::duration<double> iterationTime = countingStart - iterationStart;
 
 		if constexpr (VERBOSE) {
-			const U64 count = countResolved(tb);
+			const U64 count = total - countUnresolved(tb);
 			newResolvedStates = count - resolvedStates;
 			resolvedStates = count;
-			if (comm.iteration <= 10 || newResolvedStates == 0)
+			if (iterationTime.count() > .1 || newResolvedStates == 0)
 				std::cout << std::format("it {:3}: {:12} ({:.4f}%) in {:.2f} seconds\n", comm.iteration, newResolvedStates, 100.0 * resolvedStates / total, iterationTime.count());
 		} else
 			std::cout << "." << std::flush;
@@ -289,7 +287,7 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, U64 stopAtIteration,
 	std::cout << std::format("\ntotal {}-men: {} states in {:.2f} seconds (+{:.2f} seconds counting)\n", TB_MEN, resolvedStates, totalTime.count(), countingTime.count());
 
 	if constexpr (!VERBOSE)
-		resolvedStates = countResolved(tb);
+		resolvedStates = total - countUnresolved(tb);
 	if (resolvedStates != EXPECTED_RESOLVED_STATES) {
 		std::cerr << "ERROR: WRONG NUMBER OF RESOLVED BOARDS (got " << resolvedStates << ", expected " << EXPECTED_RESOLVED_STATES << ")\n";
 		throw std::runtime_error("wrong number of boards");
@@ -328,7 +326,8 @@ struct TableBase {
 		const auto allocStart = std::chrono::steady_clock::now();
 		// make_unique makes clang shit itself at compile time
 		void* storage = ::operator new(sizeof(TableBaseStorage), std::align_val_t{alignof(TableBaseStorage)});
-		tb.reset(static_cast<TableBaseStorage*>(std::memset(storage, 0, sizeof(TableBaseStorage))));
+		std::fill_n(static_cast<U32*>(storage), sizeof(TableBaseStorage) / sizeof(U32), CARD_PERMS_MASK);
+		tb.reset(static_cast<TableBaseStorage*>(storage));
 
 		const std::chrono::duration<double> allocTime = std::chrono::steady_clock::now() - allocStart;
 		std::cout << std::format("allocated {:.1f}GB in {:.2f} seconds\n", sizeof(TableBaseStorage) / 1e9, allocTime.count());

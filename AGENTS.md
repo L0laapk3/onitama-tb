@@ -22,7 +22,8 @@ expected constants can go stale when the counting changes, so sanity check them 
 ## The hytak_alg approach
 
 Each table entry is a `U32` bitmask over all 30 card permutations of one piece configuration, so a whole
-position-for-all-cards is processed in one go. A set bit means "resolved" for that card permutation, so a zero-initialized table is all unresolved.
+position-for-all-cards is processed in one go. A set bit means "unresolved" for that card permutation, so the table is initialized to `CARD_PERMS_MASK`
+in every entry and resolving clears bits.
 Pieces are indexed per row (one row per (p0 count, p1 count), kings included in the counts) as
 `row[ip0][ip1][ik0][ik1]`:
 
