@@ -19,17 +19,30 @@ build --cxxopt='-fconstexpr-steps=10000000'
 
 build --cxxopt='-Wall'
 build --cxxopt='-Werror'
+build --cxxopt='-Wpedantic'
 build --cxxopt='-Wno-unused-parameter'
+build --cxxopt='-Wno-missing-braces'
 build --cxxopt='-Wno-unused-variable'
 build --cxxopt='-Wno-unused-but-set-variable'
 build --cxxopt='-Wno-unused-function'
-build --cxxopt='-Wno-missing-braces'
-build --cxxopt='-Wno-TU-local-entity-exposure'
+build --cxxopt='-Wno-unused-private-field'
+build --cxxopt='-Wno-switch'
+build --cxxopt='-Wno-language-extension-token'
+build --cxxopt='-Wno-gnu-anonymous-struct'
+build --cxxopt='-Wno-nested-anon-types'
 
-build:rel --copt=-O3 --copt=-ffast-math --copt=-flto --linkopt=-flto
-build:rel --strip=always
+# Default build: release
+build --copt=-O3 --copt=-ffast-math --copt=-flto --linkopt=-flto
+build --strip=always
 
-build:dbg --copt=-g --copt=-O0
-build:dbg --strip=never
+build:symbols --copt=-g --strip=never
+
+build:dbg --config=symbols
+build:dbg --copt=-O0 --copt=-fno-fast-math --copt=-fno-lto --linkopt=-fno-lto
 build:dbg --copt=-fno-omit-frame-pointer
 build:dbg --compilation_mode=dbg
+build:dbg --copt=-fsanitize=address,undefined
+build:dbg --linkopt=-fsanitize=address,undefined
+build:dbg --copt=-D_GLIBCXX_ASSERTIONS
+build:dbg --copt=-D_GLIBCXX_DEBUG
+build:dbg --copt=-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG

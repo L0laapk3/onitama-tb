@@ -147,7 +147,7 @@ void checkRow(const Moves& moves, const auto& tb, Results& results) {
 						const U32 entry = row[ip0][ip1][ik0][ik1].load(std::memory_order_relaxed);
 						for (U8 perm = 0; perm < 30; perm++) {
 							const Pos s{ p, o, kp, ko, perm };
-							const bool resolved = !((entry >> perm) & 1);
+							const bool resolved = (entry >> perm) & 1;
 							Category cat;
 							bool ok;
 							if (winIn0(s))
