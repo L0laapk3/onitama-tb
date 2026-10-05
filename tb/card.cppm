@@ -173,6 +173,15 @@ static_assert([] {
 }());
 
 
+// Bit i: card i is the side card in at least one of these permutations, i.e. it was just used to move.
+export constexpr U32 usedCardsOfEntry(U32 cardEntry) {
+	U32 cards = 0;
+	for (int i = 0; i < 5; i++)
+		cards |= U32((cardEntry & SIDE_CARD_MASK[i]) != 0) << i;
+	return cards;
+}
+
+
 export using MoveBoard = std::array<U32, 25>;
 
 template<bool invert>
@@ -226,6 +235,14 @@ constexpr auto generateMoveBoardSet(const CardSet& cards) {
 	}
 	set.all = generateMoveBoard<invert>(all);
 	return set;
+}
+
+// Squares reachable from pp with any of these cards (bit i = card i).
+export constexpr U32 landingsForCards(int pp, U32 cards, const MoveBoardSet& set) {
+	U32 landings = 0;
+	for (; cards; cards &= cards - 1)
+		landings |= set.moveBoards[std::countr_zero(cards)][pp];
+	return landings;
 }
 
 export struct CardsInfo {

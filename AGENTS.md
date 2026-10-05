@@ -76,3 +76,4 @@ Pitfalls learned the hard way:
   decode equals the rotated normal decode.
 - Multithreaded passes use relaxed atomics; small run-to-run variance in some counters can come from races
   rather than indexing bugs.
+- When I run a benchmark, a few more seconds of variation is expected compared to the users benchmark due to the nature of the harnass.
