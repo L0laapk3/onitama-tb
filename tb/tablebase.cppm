@@ -64,10 +64,12 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 								continue;
 							}
 							const U32 winInOneCards = inverseBoard.getWinInOneCards<0>(cards.moveBoardsReverse);
-							entry = ~(cardsEntry.fetch_or(winInOneCards, std::memory_order_relaxed) | winInOneCards) & CARD_PERMS_MASK;
+							cardsEntry.fetch_or(winInOneCards, std::memory_order_relaxed);
+							entry = CARD_PERMS_MASK ^ winInOneCards;
+							// entry = ~(cardsEntry.fetch_or(winInOneCards, std::memory_order_relaxed) | winInOneCards) & CARD_PERMS_MASK;
 						} else {
 							// loop over all entries, when a stored bit is 0 that means the entry is still unresolved.
-							if (!(entry = ~cardsEntry.load(std::memory_order_relaxed) & CARD_PERMS_MASK))
+							if (!(entry = CARD_PERMS_MASK ^ cardsEntry.load(std::memory_order_relaxed)))
 								continue;
 						}
 						U32 newEntries = 0;
@@ -81,6 +83,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 								sourcePieces &= sourcePieces - 1;
 								const U32 bbp1_without_source = bbp1 - sourcePiece;
 								U32 landPieces = cards.moveBoardsReverse.all[pp] & ~bbp1; // can't land on my own pieces
+								landPieces &= ~bbk0; // we don't have to bother checking king take moves, those are obviously resolved
 								while (landPieces) {
 									const U32 landPiece = landPieces & -landPieces;
 									landPieces &= landPieces - 1;
@@ -103,7 +106,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 											otherEntry = std::get<MIRROR_ROW>(tb)[ip0_new][ip1_new][ik0_new][ik1_new].load(std::memory_order_acquire);
 										} else {
 											if constexpr (PC.p1c == 1) {
-												otherEntry = CARD_PERMS_MASK; // when p0 only has its king left, every take is a king take
+												std::unreachable();
 											} else {
 												const U32 bbp0_taken = bbp0 & ~landPiece;
 												const int ip0_taken = rankFirstPieces<TB_MEN, P0_TAKEN_ROW, false>(bbp0_taken);
@@ -127,7 +130,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 
 						// Reload after the acquire loads of the children: a child that was seen resolved as a loss has
 						// already marked its parents (this entry) before releasing, so those win bits must not count as lost.
-						if constexpr (STEP != 1)
+						if constexpr (STEP > 1)
 							entry &= ~cardsEntry.load(std::memory_order_acquire);
 						const U32 lost = entry & ~newEntries;
 						if (!lost)
@@ -278,7 +281,8 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, U64 stopAtIteration,
 			const U64 count = countResolved(tb);
 			newResolvedStates = count - resolvedStates;
 			resolvedStates = count;
-			std::cout << std::format("it {:3}: {:12} ({:.4f}%) in {:.2f} seconds\n", comm.iteration, newResolvedStates, 100.0 * resolvedStates / total, iterationTime.count());
+			if (comm.iteration <= 10 || newResolvedStates == 0)
+				std::cout << std::format("it {:3}: {:12} ({:.4f}%) in {:.2f} seconds\n", comm.iteration, newResolvedStates, 100.0 * resolvedStates / total, iterationTime.count());
 		} else
 			std::cout << "." << std::flush;
 
@@ -327,7 +331,10 @@ struct TableBase {
 
 	explicit TableBase(const CardsInfo& cards, U64 stopAtIteration = std::numeric_limits<U64>::max()) {
 		const auto allocStart = std::chrono::steady_clock::now();
-		tb = std::make_unique<TableBaseStorage>();
+		// make_unique makes clang shit itself at compile time
+		void* storage = ::operator new(sizeof(TableBaseStorage), std::align_val_t{alignof(TableBaseStorage)});
+		tb.reset(static_cast<TableBaseStorage*>(std::memset(storage, 0, sizeof(TableBaseStorage))));
+
 		const std::chrono::duration<double> allocTime = std::chrono::steady_clock::now() - allocStart;
 		std::cout << std::format("allocated {:.1f}GB in {:.2f} seconds\n", sizeof(TableBaseStorage) / 1e9, allocTime.count());
 		tablebase_impl::runTableBaseBuild<TB_MEN>(cards, *tb, stopAtIteration, allocStart);

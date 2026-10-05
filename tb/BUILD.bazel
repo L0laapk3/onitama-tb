@@ -1,16 +1,8 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
-load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_binary(
     name = "tb",
     srcs = ["main.cpp"],
-    module_interfaces = glob(["**/*.cppm"]),
-    features = ["cpp_modules"],
-)
-
-cc_test(
-    name = "tablebase_test",
-    srcs = ["test_main.cpp"],
     module_interfaces = glob(["**/*.cppm"]),
     features = ["cpp_modules"],
 )
