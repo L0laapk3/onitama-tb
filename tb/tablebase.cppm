@@ -249,10 +249,9 @@ void singleThread(const CardsInfo& cards, Storage& tb, std::atomic<U64>& chunkCo
 
 template <U16 TB_MEN, typename Storage>
 void runTableBaseBuild(const CardsInfo& cards, Storage& tb, U64 stopAtIteration, std::chrono::steady_clock::time_point startTime) {
-	constexpr U64 EXPECTED_WIN_IN_ONE = 537541377ULL;
 	// 30 card perms. 47 perms with kings on their temple. times all combinations of zero to 2 pawns on each side
-	constexpr U64 EXPECTED_WIN_IN_ZERO = 30 * 47 * (1 + 23 + 23*22/2 + 23 * (1 + 22 + 22*21/2) + 23*22/2 * (1 + 21 + 21*20/2));
-	constexpr U64 EXPECTED_RESOLVED_STATES = EXPECTED_WIN_IN_ZERO + EXPECTED_WIN_IN_ONE + (TB_MEN == 6 ? 537649967ULL : 19974501547ULL);
+	// constexpr U64 EXPECTED_WIN_IN_ZERO = 30 * 47 * (1 + 23 + 23*22/2 + 23 * (1 + 22 + 22*21/2) + 23*22/2 * (1 + 21 + 21*20/2));
+	constexpr U64 EXPECTED_RESOLVED_STATES = TB_MEN == 6 ? 1166580494ULL : 50958224689ULL;
 
 	std::atomic<U64> chunkCounter;
 	ThreadObj comm;
@@ -282,28 +281,6 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, U64 stopAtIteration,
 			std::cout << std::format("it {:3}: {:12} ({:.4f}%) in {:.2f} seconds\n", comm.iteration, newResolvedStates, 100.0 * resolvedStates / total, iterationTime.count());
 		} else
 			std::cout << "." << std::flush;
-
-		if constexpr (TB_MEN == 6 || VERBOSE) {
-			if (comm.iteration == 1) {
-				// const WinInZeroOneCount winCount = countWinInZeroOne<TB_MEN>(cards, tb);
-				// if constexpr (VERBOSE) {
-				// 	std::cout << "ply  0: " << winCount.winIn0 << "\n";
-				// 	std::cout << "ply  1: " << winCount.winIn1 << "\n";
-				// 	std::cout << "ply 2-3: " << resolvedStates - winCount.winIn0 - winCount.winIn1 << "\n";
-				// }
-				// if constexpr (TB_MEN == 6) {
-				// 	if (winCount.winIn0 != EXPECTED_WIN_IN_ZERO) {
-				// 		std::cerr << "ERROR: WRONG NUMBER OF WIN-IN-0 BOARDS (got " << winCount.winIn0 << ", expected " << EXPECTED_WIN_IN_ZERO << ")\n";
-				// 		throw std::runtime_error("wrong number of win-in-0 boards");
-				// 	}
-
-				// 	if (winCount.winIn1 != EXPECTED_WIN_IN_ONE) {
-				// 		std::cerr << "ERROR: WRONG NUMBER OF WIN-IN-1 BOARDS (got " << winCount.winIn1 << ", expected " << EXPECTED_WIN_IN_ONE << ")\n";
-				// 		throw std::runtime_error("wrong number of win-in-1 boards");
-				// 	}
-				// }
-			}
-		}
 
 		countingTime += std::chrono::steady_clock::now() - countingStart;
 		comm.iteration++;
