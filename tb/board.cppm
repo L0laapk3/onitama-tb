@@ -53,12 +53,13 @@ export struct Board {
 		return isTakeWinInOne<player>(reverseMoveBoard);
 	}
 
+	// Entry bits are from the mover's perspective, so `player` holds playerCards[0].
 	template <bool player>
 	constexpr U32 getWinInOneCards(const MoveBoardSet& reverseMoveBoards) const {
 		U32 winCards = 0;
 		for (int i = 0; i < 5; i++) {
 			if (isWinInOne<player>(reverseMoveBoards.moveBoards[i]))
-				winCards |= P_HAS_CARD_IN_MASK<player>[i];
+				winCards |= P_HAS_CARD_IN_MASK<0>[i];
 		}
 		return winCards;
 	};

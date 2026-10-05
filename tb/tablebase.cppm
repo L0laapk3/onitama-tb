@@ -37,20 +37,16 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 		for (int ip0 = begin; ip0 < end; ip0++) {
 			auto& rowP0 = row[ip0];
 			const U32 bbp1 = unrankFirstPieces<TB_MEN, ROW, true>(ip0);
-			const U32 bbp0_inv = unrankFirstPieces<TB_MEN, ROW, false>(ip0);
 			for (int ip1 = 0; ip1 < static_cast<int>(rowP0.size()); ip1++) {
 				auto& rowP1 = rowP0[ip1];
 				const U32 bbp0 = unrankSecondPieces<TB_MEN, ROW, true>(ip1, bbp1);
-				const U32 bbp1_inv = unrankSecondPieces<TB_MEN, ROW, false>(ip1, bbp0_inv);
 				const int ip0_new = rankFirstPieces<TB_MEN, MIRROR_ROW, false>(bbp0);
 				for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 					auto& rowK0 = rowP1[ik0];
 					const U32 bbk1 = unrankFirstKing<TB_MEN, ROW, true>(ik0, bbp1);
-					const U32 bbk0_inv = unrankFirstKing<TB_MEN, ROW, false>(ik0, bbp0_inv);
 					for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++) {
 						auto& cardsEntry = rowK0[ik1];
 						const U32 bbk0 = unrankSecondKing<TB_MEN, ROW, true>(ik1, bbp0);
-						const U32 bbk1_inv = unrankSecondKing<TB_MEN, ROW, false>(ik1, bbp1_inv);
 						const int ik0_new = rankFirstKing<TB_MEN, MIRROR_ROW, false>(bbk0, bbp0);
 
 						U32 entry;
@@ -58,12 +54,11 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 							// Other threads may already have reverse marked bits of this entry as win in 3: clear with
 							// RMWs to keep those marks.
 							Board board{ bbp0, bbp1, bbk0, bbk1 };
-							Board inverseBoard{ bbp0_inv, bbp1_inv, bbk0_inv, bbk1_inv };
-							if (board.isTempleEnded() || inverseBoard.isTempleEnded()) { // Win in 0
+							if (board.isTempleEnded()) { // Win in 0
 								cardsEntry.store(CARD_PERMS_MASK, std::memory_order_relaxed);
 								continue;
 							}
-							const U32 winInOneCards = inverseBoard.getWinInOneCards<0>(cards.moveBoardsReverse);
+							const U32 winInOneCards = board.getWinInOneCards<1>(cards.moveBoardsForward);
 							cardsEntry.fetch_or(winInOneCards, std::memory_order_relaxed);
 							entry = CARD_PERMS_MASK ^ winInOneCards;
 							// entry = ~(cardsEntry.fetch_or(winInOneCards, std::memory_order_relaxed) | winInOneCards) & CARD_PERMS_MASK;
@@ -158,7 +153,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 									const U32 newEntryBits = unmoveCardEntry(lost & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)]);
 									std::get<MIRROR_ROW>(tb)[ip0_new][ip1_new][ik0_new][ik1_new].fetch_or(newEntryBits, std::memory_order_relaxed);
 
-									if constexpr (P1_UNTAKEN_ROW >= 0) {
+									if constexpr (PC.p0c < TB_MEN / 2) {
 										const U32 bbp1_untaken = bbp1 | sourcePiece;
 										const int ip0_untaken = rankFirstPieces<TB_MEN, P1_UNTAKEN_ROW, false>(bbp0_new);
 										const int ip1_untaken = rankSecondPieces<TB_MEN, P1_UNTAKEN_ROW, false>(bbp1_untaken, bbp0_new); // TODO incremental?
