@@ -56,15 +56,17 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 							Board board{ bbp0, bbp1, bbk0, bbk1 };
 							if (board.isTempleEnded()) { // Win in 0
 								cardsEntry.store(0, std::memory_order_relaxed);
-								continue;
+								entry = 0; // Win in 0 - skip all the forwards and backwards movegen
+							} else {
+								const U32 winInOneCards = board.getWinInOneCards<1>(cards.moveBoardsForward);
+								entry = cardsEntry.fetch_and(~winInOneCards, std::memory_order_relaxed) & ~winInOneCards;
 							}
-							const U32 winInOneCards = board.getWinInOneCards<1>(cards.moveBoardsForward);
-							entry = cardsEntry.fetch_and(~winInOneCards, std::memory_order_relaxed) & ~winInOneCards;
 						} else {
 							// loop over all entries, when a stored bit is 1 that means the entry is still unresolved.
-							if (!(entry = cardsEntry.load(std::memory_order_relaxed)))
-								continue;
+							entry = cardsEntry.load(std::memory_order_relaxed);
 						}
+						if (!entry)
+							continue;
 						U32 newEntries = 0;
 						U32 unresolvedAfterMove = 0;
 
@@ -114,19 +116,20 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 									}
 								}
 							}
+							newEntries |= unmoveCardEntry(unresolvedAfterMove);
 						}
-						newEntries |= unmoveCardEntry(unresolvedAfterMove);
+
 
 						newEntries &= entry;
 						if (entry == newEntries) // all unresolved entries survived, nothing to update
 							continue;
-
-						// Reload after the acquire loads of the children: a child that was seen resolved as a loss has
-						// already marked its parents (this entry) before releasing, so those win bits must not count as lost.
-						if constexpr (STEP > 1)
+						if constexpr (STEP > 1) {
+							// Reload after the acquire loads of the children: a child that was seen resolved as a loss has
+							// already marked its parents (this entry) before releasing, so those win bits must not count as lost.
 							entry &= cardsEntry.load(std::memory_order_acquire);
+						}
 						const U32 lost = entry & ~newEntries;
-						if (!lost)
+						if (STEP > 1 && !lost)
 							continue;
 
 						{ // reverse movegen - all entries that can reach this entry are also marked as resolved.
