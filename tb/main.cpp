@@ -3,6 +3,6 @@ import std;
 
 auto main() -> int {
 	const CardsInfo cards{BOAR, OX, ELEPHANT, HORSE, CRAB};
-	auto tb = std::make_unique<TableBase<6>>(cards);
+	TableBase<6> tb(cards);
 	return 0;
 }

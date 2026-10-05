@@ -133,7 +133,7 @@ struct Results {
 
 template <U16 TB_MEN, U32 ROW>
 void checkRow(const Moves& moves, const auto& tb, Results& results) {
-	const auto& row = std::get<ROW>(tb.tb);
+	const auto& row = std::get<ROW>(tb);
 	std::atomic<U32> next = 0;
 	const auto work = [&] {
 		for (U32 ip0; (ip0 = next++) < row.size();) {
@@ -186,11 +186,11 @@ void checkRow(const Moves& moves, const auto& tb, Results& results) {
 export template <U16 TB_MEN>
 bool testStepOne(const CardsInfo& cards) {
 	using namespace tablebase_test_impl;
-	auto tb = std::make_unique<TableBase<TB_MEN>>(cards, 2);
+	TableBase<TB_MEN> tb(cards, 2);
 	const Moves moves = forwardMoves(cards.cards);
 	Results results;
 	[&]<U32... ROW>(std::integer_sequence<U32, ROW...>) {
-		(checkRow<TB_MEN, ROW>(moves, *tb, results), ...);
+		(checkRow<TB_MEN, ROW>(moves, *tb.tb, results), ...);
 	}(std::make_integer_sequence<U32, std::tuple_size_v<typename TableBase<TB_MEN>::TableBaseStorage>>{});
 
 	U64 totalMismatches = 0;
