@@ -15,7 +15,6 @@ struct ThreadObj {
 };
 
 constexpr U64 CHUNK_P0_POSITIONS = 1;
-
 constexpr bool VERBOSE = true;
 
 
@@ -42,6 +41,15 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 				auto& rowP1 = rowP0[ip1];
 				const U32 bbp0 = unrankSecondPieces<TB_MEN, ROW, true>(ip1, bbp1);
 				const int ip0_new = rankFirstPieces<TB_MEN, MIRROR_ROW, false>(bbp0);
+				std::array<int, PC.p1c> ip0s_taken; // precalculate all the ranks for different taken pieces
+				if constexpr (PC.p1c > 1) {
+					U32 bbp0_source = bbp0;
+					for (int i = 0; i < PC.p1c; i++) {
+						const U32 pp0 = bbp0_source & -bbp0_source;
+						bbp0_source &= bbp0_source - 1;
+						ip0s_taken[i] = rankFirstPieces<TB_MEN, P0_TAKEN_ROW, false>(bbp0 - pp0);
+					}
+				}
 				for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 					auto& rowK0 = rowP1[ik0];
 					const U32 bbk1 = unrankFirstKing<TB_MEN, ROW, true>(ik0, bbp1);
@@ -104,7 +112,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 												std::unreachable();
 											} else {
 												const U32 bbp0_taken = bbp0 & ~landPiece;
-												const int ip0_taken = rankFirstPieces<TB_MEN, P0_TAKEN_ROW, false>(bbp0_taken);
+												const int ip0_taken = ip0s_taken[std::popcount(bbp0 & (landPiece - 1))];
 												const int ip1_taken = rankSecondPieces<TB_MEN, P0_TAKEN_ROW, false>(bbp1_new, bbp0_taken);
 												const int ik0_taken = rankFirstKing<TB_MEN, P0_TAKEN_ROW, false>(bbk0, bbp0_taken);
 												const int ik1_taken = rankSecondKing<TB_MEN, P0_TAKEN_ROW, false>(bbk1_new, bbp1_new);
