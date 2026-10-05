@@ -34,6 +34,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 	for (; chunk < rowStartChunk + P0_CHUNKS; chunk = chunkCounter++) {
 		const U32 begin = static_cast<U32>((chunk - rowStartChunk) * CHUNK_P0_POSITIONS);
 		const U32 end = std::min<U32>(begin + CHUNK_P0_POSITIONS, static_cast<U32>(row.size()));
+		auto* it = &row[begin][0][0][0];
 		for (int ip0 = begin; ip0 < end; ip0++) {
 			auto& rowP0 = row[ip0];
 			const U32 bbp1 = unrankFirstPieces<TB_MEN, ROW, true>(ip0);
@@ -45,7 +46,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 					auto& rowK0 = rowP1[ik0];
 					const U32 bbk1 = unrankFirstKing<TB_MEN, ROW, true>(ik0, bbp1);
 					for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++) {
-						auto& cardsEntry = rowK0[ik1];
+						auto& cardsEntry = *(it++);
 						const U32 bbk0 = unrankSecondKing<TB_MEN, ROW, true>(ik1, bbp0);
 						const int ik0_new = rankFirstKing<TB_MEN, MIRROR_ROW, false>(bbk0, bbp0);
 
@@ -67,8 +68,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 						}
 						if (!entry)
 							continue;
-						U32 newEntries = 0;
-						U32 unresolvedAfterMove = 0;
+						U32 unresolvedChildren = 0;
 
 						{ // forwards movegen - check if all possible p1 moves are resolved
 							U32 sourcePieces = bbp1 & ~bbk0; // No need to check king takes ;)
@@ -91,7 +91,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 											.bbk = { bbk0, bbk1_new },
 										};
 										const U32 unresolvedChild = ~board.getWinInOneCards<0>(cards.moveBoardsReverse);
-										unresolvedAfterMove |= unresolvedChild & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)];
+										unresolvedChildren |= unresolvedChild & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)];
 									} else {
 										const bool isTakeMove = landPiece & bbp0;
 										U32 otherEntry; // unresolved bits of the child
@@ -112,24 +112,21 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 											}
 										}
 
-										unresolvedAfterMove |= otherEntry & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)];
+										unresolvedChildren |= otherEntry & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)];
 									}
 								}
 							}
-							newEntries |= unmoveCardEntry(unresolvedAfterMove);
 						}
-
-
-						newEntries &= entry;
-						if (entry == newEntries) // all unresolved entries survived, nothing to update
-							continue;
+						// Unresolved card perms where every move leads to a resolved child, i.e. a win for the opponent.
+						U32 newLostEntries = entry & ~unmoveCardEntry(unresolvedChildren);
 						if constexpr (STEP > 1) {
+							if (!newLostEntries)
+								continue;
 							// Reload after the acquire loads of the children: a child that was seen resolved as a loss has
 							// already marked its parents (this entry) before releasing, so those win bits must not count as lost.
-							entry &= cardsEntry.load(std::memory_order_acquire);
+							newLostEntries &= cardsEntry.load(std::memory_order_acquire);
 						}
-						const U32 lost = entry & ~newEntries;
-						if (STEP > 1 && !lost)
+						if (!newLostEntries)
 							continue;
 
 						{ // reverse movegen - all entries that can reach this entry are also marked as resolved.
@@ -151,7 +148,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 									const int ik0_new = rankFirstKing<TB_MEN, MIRROR_ROW, false>(bbk0_new, bbp0_new);
 									const int ik1_new = rankSecondKing<TB_MEN, MIRROR_ROW, false>(bbk1, bbp1);
 
-									const U32 newEntryBits = unmoveCardEntry(lost & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)]);
+									const U32 newEntryBits = unmoveCardEntry(newLostEntries & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)]);
 									std::get<MIRROR_ROW>(tb)[ip0_new][ip1_new][ik0_new][ik1_new].fetch_and(~newEntryBits, std::memory_order_relaxed);
 
 									if constexpr (PC.p0c < TB_MEN / 2) {
@@ -167,7 +164,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 						}
 
 						// Only after the reverse movegen, so a thread that sees these bits set also sees the parents marked.
-						cardsEntry.fetch_and(~lost, std::memory_order_release);
+						cardsEntry.fetch_and(~newLostEntries, std::memory_order_release);
 						updated = true;
 					}
 				}
