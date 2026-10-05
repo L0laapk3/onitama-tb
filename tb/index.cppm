@@ -26,6 +26,15 @@ constexpr auto PIECE_COUNTS = [] {
 	return a;
 }();
 
+// Row with the given piece counts, -1 if it is not part of the table.
+export template <U16 TB_MEN>
+constexpr int rowIndex(int p0c, int p1c) {
+	for (int i = 0; i < static_cast<int>(PIECE_COUNTS<TB_MEN>.size()); i++)
+		if (PIECE_COUNTS<TB_MEN>[i].p0c == p0c && PIECE_COUNTS<TB_MEN>[i].p1c == p1c)
+			return i;
+	return -1;
+}
+
 template <U32 SQUARES, U32 PIECES>
 constexpr auto PIECE_PLACEMENTS = [] {
 	std::array<U32, fact(SQUARES, SQUARES - PIECES) / fact(PIECES)> a;
@@ -96,9 +105,9 @@ U32 unrankSecondKing(int ik, U32 bbp) {
 	return unrankKings<TB_MEN, ROW, false, invert>(ik, bbp);
 }
 
-export template <U16 TB_MEN, std::size_t ROW, bool invert>
+export template <U16 TB_MEN, std::size_t ROW, bool invert, U16 N = PIECE_COUNTS<TB_MEN>[ROW].p0c>
 int rankFirstPieces(U32 bbp) {
-	std::array<U32, invert ? PIECE_COUNTS<TB_MEN>[ROW].p1c : PIECE_COUNTS<TB_MEN>[ROW].p0c> ip;
+	std::array<U32, N> ip;
 	if constexpr (!invert) {
 		for (int i = 0; i < static_cast<int>(ip.size()); i++) {
 			ip[i] = std::countr_zero(bbp);
@@ -106,7 +115,7 @@ int rankFirstPieces(U32 bbp) {
 		}
 	} else {
 		for (int i = static_cast<int>(ip.size()); i-- > 0;) {
-			ip[i] = 31 - std::countr_zero(bbp);
+			ip[i] = 24 - std::countr_zero(bbp);
 			bbp &= bbp - 1;
 		}
 	}
@@ -114,8 +123,8 @@ int rankFirstPieces(U32 bbp) {
 	int index = 0;
 	for (int i = 0; i < static_cast<int>(ip.size()); i++) {
 		U32 pawnIndex = 1;
-		for (int j = 0; j < i; j++)
-			pawnIndex *= ip[i]-- / (j + 1);
+		for (int j = 0; j <= i; j++)
+			pawnIndex = (pawnIndex * ip[i]--) / (j + 1);
 		index += pawnIndex;
 	}
 	return index;
@@ -123,8 +132,10 @@ int rankFirstPieces(U32 bbp) {
 
 export template <U16 TB_MEN, std::size_t ROW, bool invert>
 int rankSecondPieces(U32 bbp, U32 bbpOther) {
-	bbp = _pdep_u32(bbp, ~bbpOther);
-	return rankFirstPieces<TB_MEN, ROW, invert>(bbp);
+	bbp = _pext_u32(bbp, ~bbpOther);
+	if constexpr (invert)
+		bbp <<= PIECE_COUNTS<TB_MEN>[ROW].p0c;
+	return rankFirstPieces<TB_MEN, ROW, invert, PIECE_COUNTS<TB_MEN>[ROW].p1c>(bbp);
 }
 
 export template <U16 TB_MEN, std::size_t ROW, bool invert>
@@ -132,7 +143,7 @@ int rankKings(U32 bbk, U32 bbp) {
 	if constexpr (!invert)
 		return std::popcount((bbk - 1) & bbp);
 	else
-		return std::popcount(((1U << 31) - bbk) & bbp);
+		return std::popcount(-(bbk << 1) & bbp);
 }
 
 export template <U16 TB_MEN, std::size_t ROW, bool invert>

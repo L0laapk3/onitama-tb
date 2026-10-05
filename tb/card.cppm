@@ -28,75 +28,78 @@ export struct CardPermutation {
 	U8 sideCard;
 };
 
+// Card bits of a table entry, playerCards[0] is the player to move. Bit 10 * k + h: the 10 bits h share
+// the mover's hand, k picks which of the 3 remaining cards is the side card. So rotating by 10 or 20 changes
+// only the side card, and swapping the hands is a permutation within each group of 6 bits (swapPlayers).
 export constexpr std::array<CardPermutation, 30> CARDS_PERMUTATIONS = {{
-	{ 2, 3, 0, 1, 4 },
-	{ 1, 2, 0, 4, 3 },
-	{ 0, 3, 1, 2, 4 },
-	{ 2, 4, 0, 1, 3 },
-	{ 0, 2, 1, 3, 4 },
-	{ 1, 4, 0, 2, 3 },
-	{ 0, 3, 1, 4, 2 },
-	{ 1, 2, 0, 3, 4 },
-	{ 0, 4, 1, 2, 3 },
-	{ 1, 4, 0, 3, 2 },
-	{ 0, 1, 2, 3, 4 },
-	{ 0, 2, 1, 4, 3 },
-	{ 1, 3, 0, 2, 4 },
-	{ 0, 1, 2, 4, 3 },
-	{ 0, 1, 3, 4, 2 },
-	{ 0, 2, 3, 4, 1 },
-	{ 1, 2, 3, 4, 0 },
-	{ 2, 4, 0, 3, 1 },
-	{ 1, 3, 2, 4, 0 },
-	{ 0, 4, 1, 3, 2 },
-	{ 2, 3, 0, 4, 1 },
-	{ 1, 4, 2, 3, 0 },
 	{ 2, 3, 1, 4, 0 },
-	{ 0, 4, 2, 3, 1 },
-	{ 1, 3, 0, 4, 2 },
-	{ 3, 4, 0, 2, 1 },
 	{ 2, 4, 1, 3, 0 },
-	{ 3, 4, 0, 1, 2 },
+	{ 0, 4, 1, 2, 3 },
+	{ 1, 4, 2, 3, 0 },
+	{ 1, 2, 0, 4, 3 },
+	{ 1, 3, 2, 4, 0 },
+	{ 3, 4, 0, 2, 1 },
 	{ 0, 3, 2, 4, 1 },
+	{ 0, 1, 2, 3, 4 },
+	{ 0, 2, 3, 4, 1 },
+	{ 2, 3, 0, 1, 4 },
+	{ 2, 4, 0, 3, 1 },
+	{ 0, 4, 1, 3, 2 },
+	{ 1, 4, 0, 3, 2 },
+	{ 1, 2, 3, 4, 0 },
+	{ 1, 3, 0, 4, 2 },
 	{ 3, 4, 1, 2, 0 },
+	{ 0, 3, 1, 4, 2 },
+	{ 0, 1, 2, 4, 3 },
+	{ 0, 2, 1, 4, 3 },
+	{ 2, 3, 0, 4, 1 },
+	{ 2, 4, 0, 1, 3 },
+	{ 0, 4, 2, 3, 1 },
+	{ 1, 4, 0, 2, 3 },
+	{ 1, 2, 0, 3, 4 },
+	{ 1, 3, 0, 2, 4 },
+	{ 3, 4, 0, 1, 2 },
+	{ 0, 3, 1, 2, 4 },
+	{ 0, 1, 3, 4, 2 },
+	{ 0, 2, 1, 3, 4 },
 }};
 
-export constexpr std::array<std::array<std::array<U8, 2>, 2>, 30> CARDS_SWAP = {{
-	{ 27, 3,  22, 20 },
-	{ 20, 24, 16, 7  },
-	{ 29, 8,  28, 6  },
-	{ 27, 0,  26, 17 },
-	{ 26, 19, 15, 11 },
-	{ 25, 12, 21, 9  },
-	{ 22, 11, 28, 2  },
-	{ 17, 9,  16, 1  },
-	{ 29, 2,  23, 19 },
-	{ 17, 7,  21, 5  },
-	{ 21, 23, 14, 13 },
-	{ 22, 6,  15, 4  },
-	{ 25, 5,  18, 24 },
-	{ 18, 28, 14, 10 },
-	{ 16, 15, 13, 10 },
-	{ 16, 14, 11, 4  },
-	{ 15, 14, 1,  7  },
-	{ 9,  7,  26, 3  },
-	{ 28, 13, 24, 12 },
-	{ 26, 4,  23, 8  },
-	{ 24, 1,  22, 0  },
-	{ 23, 10, 9,  5  },
-	{ 6,  11, 20, 0  },
-	{ 21, 10, 19, 8  },
-	{ 20, 1,  18, 12 },
-	{ 5,  12, 29, 27 },
-	{ 19, 4,  17, 3  },
-	{ 3,  0,  29, 25 },
-	{ 18, 13, 6,  2  },
-	{ 8,  2,  25, 27 },
-}};
+constexpr U8 findCardPermutation(std::array<U8, 2> hand0, std::array<U8, 2> hand1, U8 side) {
+	const auto sameHand = [](std::array<U8, 2> a, std::array<U8, 2> b) {
+		return (a[0] == b[0] && a[1] == b[1]) || (a[0] == b[1] && a[1] == b[0]);
+	};
+	for (U8 p = 0; p < CARDS_PERMUTATIONS.size(); p++) {
+		const auto& perm = CARDS_PERMUTATIONS[p];
+		if (sameHand(perm.playerCards[0], hand0) && sameHand(perm.playerCards[1], hand1) && perm.sideCard == side)
+			return p;
+	}
+	throw "card permutation not found";
+}
 
-export constexpr std::array<U8, 30> CARDS_INVERT = {
-	10, 8, 7, 13, 12, 11, 9, 2, 1, 6, 0, 5, 4, 3, 27, 25, 29, 28, 26, 24, 23, 22, 21, 20, 19, 15, 18, 14, 17, 16
-};
+// [perm][player][slot]: the permutation after `player` used its card in `slot`.
+export constexpr auto CARDS_SWAP = [] {
+	std::array<std::array<std::array<U8, 2>, 2>, 30> result{};
+	for (U8 p = 0; p < CARDS_PERMUTATIONS.size(); p++) {
+		const auto& perm = CARDS_PERMUTATIONS[p];
+		for (int player = 0; player < 2; player++) {
+			for (int slot = 0; slot < 2; slot++) {
+				auto hands = perm.playerCards;
+				hands[player][slot] = perm.sideCard;
+				result[p][player][slot] = findCardPermutation(hands[0], hands[1], perm.playerCards[player][slot]);
+			}
+		}
+	}
+	return result;
+}();
+
+export constexpr auto CARDS_INVERT = [] {
+	std::array<U8, 30> result{};
+	for (U8 p = 0; p < CARDS_PERMUTATIONS.size(); p++) {
+		const auto& perm = CARDS_PERMUTATIONS[p];
+		result[p] = findCardPermutation(perm.playerCards[1], perm.playerCards[0], perm.sideCard);
+	}
+	return result;
+}();
 
 // Player `player` has card i in these indices of permutations.
 export template<bool player>
@@ -118,6 +121,56 @@ constexpr auto P_HAS_CARD_IN_MASK = [] {
 			a[i] |= 1U << P_HAS_CARD_IN<player>[i][j];
 	return a;
 }();
+
+export constexpr U32 CARD_PERMS_MASK = (1U << 30) - 1;
+
+// Permutations in which card i is the side card.
+export constexpr auto SIDE_CARD_MASK = [] {
+	std::array<U32, 5> a{};
+	for (U8 p = 0; p < CARDS_PERMUTATIONS.size(); p++)
+		a[CARDS_PERMUTATIONS[p].sideCard] |= 1U << p;
+	return a;
+}();
+
+// Same mover's hand, other side card.
+export constexpr U32 otherSideCards(U32 bits) {
+	const U64 rotated = (U64(bits) << 10) | (U64(bits) << 20);
+	return static_cast<U32>(rotated | (rotated >> 30)) & CARD_PERMS_MASK;
+}
+
+// Same as CARDS_INVERT, but on the bits of an entry.
+export constexpr U32 swapPlayers(U32 bits) {
+	constexpr U32 TRIPLE_LOW = 0b001001'001001'001001'001001'001001;
+	constexpr U32 HALF_LOW = 0b000111'000111'000111'000111'000111;
+	bits = (bits & TRIPLE_LOW) | ((bits & TRIPLE_LOW << 1) << 1) | ((bits & TRIPLE_LOW << 2) >> 1);
+	return ((bits & HALF_LOW) << 3) | ((bits & HALF_LOW << 3) >> 3);
+}
+
+// Given an input card entry with these bits, return the bits that can move into one of these moves.
+export constexpr U32 unmoveCardEntry(U32 after) {
+	return swapPlayers(otherSideCards(after));
+}
+// Given an input card entry with these bits, return the bits that are the result of any move (with either card)
+export constexpr U32 moveCardEntry(U32 after) {
+	// return swapPlayers(otherSideCards(after));
+	return after; // TODO
+}
+
+static_assert([] {
+	for (U8 p = 0; p < CARDS_PERMUTATIONS.size(); p++) {
+		if (swapPlayers(1U << p) != 1U << CARDS_INVERT[p])
+			return false;
+		const auto& perm = CARDS_PERMUTATIONS[p];
+		for (int slot = 0; slot < 2; slot++) {
+			const U8 card = perm.playerCards[0][slot];
+			const U8 after = CARDS_INVERT[CARDS_SWAP[p][0][slot]];
+			const U32 before = unmoveCardEntry((1U << after) & SIDE_CARD_MASK[card]);
+			if (!(before & (1U << p)) || std::popcount(before) != 2 || (before & ~P_HAS_CARD_IN_MASK<0>[card]))
+				return false;
+		}
+	}
+	return true;
+}());
 
 
 export using MoveBoard = std::array<U32, 25>;
@@ -155,15 +208,21 @@ export using CardSet = std::array<U32, 5>;
 export struct MoveBoardSet {
 	MoveBoard all;
 	std::array<MoveBoard, 5> moveBoards;
+	// [from][to]: SIDE_CARD_MASK of all cards that make this move.
+	std::array<std::array<U32, 25>, 25> sideCards;
 };
 
 template<bool invert>
 constexpr auto generateMoveBoardSet(const CardSet& cards) {
-	MoveBoardSet set;
+	MoveBoardSet set{};
 	U32 all = 0;
 	for (U64 i = 0; i < 5; i++) {
 		all |= cards[i];
 		set.moveBoards[i] = generateMoveBoard<invert>(cards[i]);
+		for (U64 from = 0; from < 25; from++)
+			for (U64 to = 0; to < 25; to++)
+				if (set.moveBoards[i][from] & (1U << to))
+					set.sideCards[from][to] |= SIDE_CARD_MASK[i];
 	}
 	set.all = generateMoveBoard<invert>(all);
 	return set;
@@ -174,48 +233,3 @@ export struct CardsInfo {
 	MoveBoardSet moveBoardsForward = generateMoveBoardSet<false>(cards);
 	MoveBoardSet moveBoardsReverse = generateMoveBoardSet<true>(cards);
 };
-
-
-// TODO these are def wrong
-export constexpr U32 p0_use_card0_unmasked(U32 entry) {
-	return (entry >> 10) | (entry << 20);
-}
-export constexpr U32 p0_use_card1_unmasked(U32 entry) {
-	return (entry >> 20) | (entry << 10);
-}
-export constexpr U32 p1_use_card0_unmasked(U32 entry) {
-	return (entry >> 10) | (entry << 20);
-}
-export constexpr U32 p1_use_card1_unmasked(U32 entry) {
-	return (entry >> 20) | (entry << 10);
-}
-
-// Per-square masks for the two 10-bit card slots in a table entry (TODO).
-export constexpr auto P0_CARD0_USED_IN_MOVE_MASK = [] {
-	constexpr U32 slot = (1U << 10) - 1;
-	std::array<U32, 25> masks{};
-	for (auto& m : masks)
-		m = ~slot;
-	return masks;
-}();
-export constexpr auto P0_CARD1_USED_IN_MOVE_MASK = [] {
-	constexpr U32 slot = ((1U << 10) - 1) << 10;
-	std::array<U32, 25> masks{};
-	for (auto& m : masks)
-		m = ~slot;
-	return masks;
-}();
-export constexpr auto P1_CARD0_USED_IN_MOVE_MASK = [] {
-	constexpr U32 slot = (1U << 10) - 1;
-	std::array<U32, 25> masks{};
-	for (auto& m : masks)
-		m = ~slot;
-	return masks;
-}();
-export constexpr auto P1_CARD1_USED_IN_MOVE_MASK = [] {
-	constexpr U32 slot = ((1U << 10) - 1) << 10;
-	std::array<U32, 25> masks{};
-	for (auto& m : masks)
-		m = ~slot;
-	return masks;
-}();
