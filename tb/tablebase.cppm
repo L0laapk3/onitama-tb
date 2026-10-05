@@ -37,7 +37,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 		for (int ip0 = begin; ip0 < end; ip0++) {
 			auto& rowP0 = row[ip0];
 			const U32 bbp1 = unrankFirstPieces<TB_MEN, ROW, true>(ip0);
-			for (int ip1 = 0; ip1 < static_cast<int>(rowP0.size()); ip1++) {
+			for (int ip1 = 0; ip1 < static_cast<int>(rowP0.size()); ip1++, it += PC.p0c * PC.p1c) {
 				auto& rowP1 = rowP0[ip1];
 				const U32 bbp0 = unrankSecondPieces<TB_MEN, ROW, true>(ip1, bbp1);
 				const int ip0_new = rankFirstPieces<TB_MEN, MIRROR_ROW, false>(bbp0);
@@ -50,16 +50,15 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 						ip0s_taken[i] = rankFirstPieces<TB_MEN, P0_TAKEN_ROW, false>(bbp0 - pp0);
 					}
 				}
-				auto* it2 = it;
-
 				{ // Optimization: If the entire block of king perms is empty, continue early
+					auto* entryIt = it;
 					bool blockHasUnresolved = false; // STEP 1 has to initialize every entry of the block before jumping
 					for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 						auto& rowK0 = rowP1[ik0];
 						const U32 bbk1 = unrankFirstKing<TB_MEN, ROW, true>(ik0, bbp1);
 						for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++) {
 
-							auto& cardsEntry = *(it2++);
+							auto& cardsEntry = *(entryIt++);
 							U32 entry;
 							if constexpr (STEP == 1) {
 								const U32 bbk0 = unrankSecondKing<TB_MEN, ROW, true>(ik1, bbp0);
@@ -85,7 +84,6 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 					}
 					if (blockHasUnresolved)
 						goto BlockHasUnresolved;
-					it += rowP1.size() * rowP1[0].size();
 					continue;
 					BlockHasUnresolved:
 				}
@@ -105,12 +103,15 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 							const U32 bbp1_new = bbp1_without_source | landPiece;
 
 							if constexpr (STEP == 1) {
-
+								auto* entryIt = it;
+								auto childIt = unresolvedChildren.begin();
 								for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 									auto& rowK0 = rowP1[ik0];
 									const U32 bbk1 = unrankFirstKing<TB_MEN, ROW, true>(ik0, bbp1);
 									const U32 bbk1_new = sourcePiece == bbk1 ? landPiece : bbk1;
-									for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++) {
+									for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, entryIt++, childIt++) {
+										if (!entryIt->load(std::memory_order_relaxed)) // already resolved, e.g. win in 0
+											continue;
 										const U32 bbk0 = unrankSecondKing<TB_MEN, ROW, true>(ik1, bbp0);
 										if (landPiece == bbk0) // King takes are obviously resolved
 											continue;
@@ -120,12 +121,13 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 											.bbk = { bbk0, bbk1_new },
 										};
 										const U32 unresolvedChild = ~board.getWinInOneCards<0>(cards.moveBoardsReverse);
-										unresolvedChildren[ik0 * PC.p1c + ik1] |= unresolvedChild & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)];
+										*childIt |= unresolvedChild & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)];
 									}
 								}
 							} else {
 								const bool isTakeMove = landPiece & bbp0;
 								std::array<U32, PC.p0c * PC.p1c> otherEntry; // unresolved bits of the child
+								auto otherIt = otherEntry.begin();
 								if (!isTakeMove) {
 									const int ip1_new = rankSecondPieces<TB_MEN, MIRROR_ROW, false>(bbp1_new, bbp0);
 									const auto& pownRow_new = std::get<MIRROR_ROW>(tb)[ip0_new][ip1_new];
@@ -136,9 +138,9 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 										const U32 bbk1 = unrankFirstKing<TB_MEN, ROW, true>(ik0, bbp1);
 										const U32 bbk1_new = sourcePiece == bbk1 ? landPiece : bbk1;
 										const U32 ik1_new = rankSecondKing<TB_MEN, MIRROR_ROW, false>(bbk1_new, bbp1_new);
-										for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++) {
+										for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, otherIt++) {
 											const U32 ik0_new = PC.p1c - 1 - ik1; // invert board
-											otherEntry[ik0 * PC.p1c + ik1] = pownRow_new[ik0_new][ik1_new].load(std::memory_order_acquire);
+											*otherIt = pownRow_new[ik0_new][ik1_new].load(std::memory_order_acquire);
 										}
 									}
 
@@ -157,14 +159,14 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 											const U32 bbk1 = unrankFirstKing<TB_MEN, ROW, true>(ik0, bbp1);
 											const U32 bbk1_new = sourcePiece == bbk1 ? landPiece : bbk1;
 											const U32 ik1_taken = rankSecondKing<TB_MEN, P0_TAKEN_ROW, false>(bbk1_new, bbp1_new);
-											for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++) {
+											for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, otherIt++) {
 												const U32 bbk0 = unrankSecondKing<TB_MEN, ROW, true>(ik1, bbp0);
 												if (landPiece == bbk0) { // King takes are obviously resolved
-													otherEntry[ik0 * PC.p1c + ik1] = 0;
+													*otherIt = 0;
 													continue;
 												}
 												const U32 ik0_taken = PC.p1c - 1 - ik1 - (landPiece < bbk0); // invert board, the taken piece shifts the king down if below it
-												otherEntry[ik0 * PC.p1c + ik1] = pawnrow_taken[ik0_taken][ik1_taken].load(std::memory_order_acquire);
+												*otherIt = pawnrow_taken[ik0_taken][ik1_taken].load(std::memory_order_acquire);
 											}
 										}
 									}
@@ -182,17 +184,14 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 				// Unresolved card perms where every move leads to a resolved child, i.e. a win for the opponent.
 				std::array<U32, PC.p0c * PC.p1c> newLostEntries;
 				bool hasNewLostEntries = false;
-				auto it3 = it;
 				for (int i = 0; i < PC.p0c * PC.p1c; i++) {
 					// Reload after the acquire loads of the children: a child that was seen resolved as a loss has
 					// already marked its parents (this entry) before releasing, so those win bits must not count as lost.
-					newLostEntries[i] = it3++->load(std::memory_order_acquire) & ~unmoveCardEntry(unresolvedChildren[i]);
+					newLostEntries[i] = it[i].load(std::memory_order_acquire) & ~unmoveCardEntry(unresolvedChildren[i]);
 					hasNewLostEntries |= newLostEntries[i];
 				}
-				if (!hasNewLostEntries) {
-					it = it3;
+				if (!hasNewLostEntries)
 					continue;
-				}
 
 				{ // reverse movegen - all entries that can reach this entry are also marked as resolved.
 					U32 sourcePieces = bbp0;
@@ -224,17 +223,20 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 									return pawnRow_new;
 							}();
 
+							auto lostIt = newLostEntries.begin();
 							for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 								auto& rowK0 = rowP1[ik0];
 								const U32 bbk1 = unrankFirstKing<TB_MEN, ROW, true>(ik0, bbp1);
 								const U32 ik1_new = PC.p0c - 1 - ik0; // invert board
-								for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++) {
+								for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, lostIt++) {
 									const U32 bbk0 = unrankSecondKing<TB_MEN, ROW, true>(ik1, bbp0);
 									const U32 bbk0_new = sourcePiece == bbk0 ? landPiece : bbk0;
 									const U32 ik0_new = rankFirstKing<TB_MEN, MIRROR_ROW, false>(bbk0_new, bbp0_new);
 
 									// TOD: this unmovecardentry could be replaced by something else outside the reverse movegen loop.
-									const U32 newEntryBits = unmoveCardEntry(newLostEntries[ik0 * PC.p1c + ik1] & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)]);
+									const U32 newEntryBits = unmoveCardEntry(*lostIt & cards.moveBoardsReverse.sideCards[pp][std::countr_zero(landPiece)]);
+									if (!newEntryBits)
+										continue;
 									pawnRow_new[ik0_new][ik1_new].fetch_and(~newEntryBits, std::memory_order_relaxed);
 
 									if constexpr (PC.p0c < TB_MEN / 2) {
@@ -247,12 +249,11 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 					}
 				}
 
-				auto it4 = it;
 				for (int i = 0; i < PC.p0c * PC.p1c; i++) {
 					// Only after the reverse movegen, so a thread that sees these bits set also sees the parents marked.
-					it4++->fetch_and(~newLostEntries[i], std::memory_order_release);
+					if (newLostEntries[i])
+						it[i].fetch_and(~newLostEntries[i], std::memory_order_release);
 				}
-				it = it4;
 				updated = true;
 			}
 		}

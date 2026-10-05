@@ -6,7 +6,9 @@ per-entry loops is the hot path, so prefer constexpr lookup tables over runtime 
 ## Build / run
 
 ```bash
-bazel run //tb --config=rel   # optimized; this is how the generator is normally run
+bazel run //tb   # optimized; this is how the generator is normally run
+bazel run //tb 8 # Larger tablebase size for benchmarking
+bazel run //tb --config=symbols
 bazel run //tb --config=dbg
 ```
 
