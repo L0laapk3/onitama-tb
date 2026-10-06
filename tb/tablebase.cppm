@@ -1,6 +1,7 @@
 module;
 #include <cerrno>
 #include <sys/mman.h>
+#include "inline.h"
 export module tb:tablebase;
 import std;
 import :types;
@@ -20,6 +21,13 @@ struct ThreadObj {
 
 constexpr U64 CHUNK_P0_POSITIONS = 1;
 constexpr bool VERBOSE = true;
+
+__FORCE_INLINE U32 fetch_mask(std::atomic<U32>& entry, U32 mask, std::memory_order order) {
+	auto value = entry.load(std::memory_order_relaxed);
+	if (value & mask)
+		value = entry.fetch_and(~mask, order);
+	return value & ~mask;
+}
 
 // STEP 1: no TableBase lookups, just check win in 0/invalid boards & win in 1.
 // STEP 2: TableBase lookups.
@@ -75,9 +83,7 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 									*entryIt = 0; // Win in 0 - skip all the forwards and backwards movegen
 								} else {
 									const U32 winInOneCards = board.getWinInOneCards<0>(cards.moveBoardsReverse);
-									*entryIt = cardsEntry->load(std::memory_order_relaxed);
-									if (*entryIt & winInOneCards)
-										*entryIt = cardsEntry->fetch_and(~winInOneCards, std::memory_order_relaxed) & ~winInOneCards;
+									*entryIt = fetch_mask(*cardsEntry, winInOneCards, std::memory_order_relaxed);
 								}
 							} else {
 								// loop over all entries, when a stored bit is 1 that means the entry is still unresolved.
@@ -266,11 +272,11 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 									const U32 newEntryBits = unmoveCardEntry(lostBits);
 									const int ik1_inv = invertKingRank<P1C>(ik1) + (iSrc < ik1); // the source piece leaving from below shifts the inverted king up
 									const U32 ik0_new = iSrc == ik1 ? landRankInv : ik1_inv - (landRankInv >= ik1_inv); // landing below the king shifts it down
-									pawnRow_new[ik0_new][ik1_new].fetch_and(~newEntryBits, std::memory_order_relaxed);
+									fetch_mask(pawnRow_new[ik0_new][ik1_new], newEntryBits, std::memory_order_relaxed);
 
 									if constexpr (P0C < TB_MEN / 2) {
 										const int ik1_untaken = ik1_new + (ik0 < iUntaken); // the untaken piece shifts the king up if above it
-										pawnRow_untaken[ik0_new][ik1_untaken].fetch_and(~newEntryBits, std::memory_order_relaxed);
+										fetch_mask(pawnRow_untaken[ik0_new][ik1_untaken], newEntryBits, std::memory_order_relaxed);
 									}
 								}
 							}
