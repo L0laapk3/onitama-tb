@@ -51,47 +51,41 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 				const U32 bbp0 = unrankSecondPieces<true, P1C, P0C>(ipInner, bbp1);
 				auto& rowP1 = row[rankFirstPieces<false, P0C, P1C>(bbp0)][rankSecondPieces<false, P0C, P1C>(bbp1, bbp0)];
 				auto* it = &rowP1[0][0];
+				std::array<U32, P0C * P1C> entries;
+
 				{ // Optimization: If the entire block of king perms is empty, continue early
-					auto* entryIt = it;
-					bool blockHasUnresolved = false; // STEP 1 has to initialize every entry of the block before jumping
+					auto* cardsEntry = it;
+					auto entryIt = entries.begin();
+					bool blockHasUnresolved = false; // every entry has to be read: STEP 1 initializes them, the forward movegen uses them
 					for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 						auto& rowK0 = rowP1[ik0];
 						const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
-						for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++) {
-
-							auto& cardsEntry = *(entryIt++);
-							const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
-							Board board{ bbp0, bbp1, bbk0, bbk1 };
-							U32 entry;
+						for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, entryIt++, cardsEntry++) {
 							if constexpr (STEP == 1) {
+								const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
+								Board board{ bbp0, bbp1, bbk0, bbk1 };
 								// Other threads may already have reverse marked bits of this entry as win in 3: clear with RMWs to keep those marks.
 								if (board.isTempleEnded()) { // Win in 0
-									cardsEntry.store(0, std::memory_order_relaxed);
-									entry = 0; // Win in 0 - skip all the forwards and backwards movegen
+									cardsEntry->store(0, std::memory_order_relaxed);
+									*entryIt = 0; // Win in 0 - skip all the forwards and backwards movegen
 								} else {
 									const U32 winInOneCards = board.getWinInOneCards<0>(cards.moveBoardsReverse);
-									entry = cardsEntry.load(std::memory_order_relaxed);
-									if (entry & winInOneCards)
-										entry = cardsEntry.fetch_and(~winInOneCards, std::memory_order_relaxed) & ~winInOneCards;
+									*entryIt = cardsEntry->load(std::memory_order_relaxed);
+									if (*entryIt & winInOneCards)
+										*entryIt = cardsEntry->fetch_and(~winInOneCards, std::memory_order_relaxed) & ~winInOneCards;
 								}
 							} else {
 								// loop over all entries, when a stored bit is 1 that means the entry is still unresolved.
-								entry = cardsEntry.load(std::memory_order_relaxed);
+								*entryIt = cardsEntry->load(std::memory_order_relaxed);
 							}
-							if (entry) {
-								if constexpr (STEP > 1)
-									goto BlockHasUnresolved;
-								blockHasUnresolved = true;
-							}
+							blockHasUnresolved |= *entryIt != 0;
 						}
 					}
-					if (blockHasUnresolved)
-						goto BlockHasUnresolved;
-					continue;
-					BlockHasUnresolved:
+					if (!blockHasUnresolved)
+						continue;
 				}
 
-				std::array<U32, P0C * P1C> unresolvedChildren{0};
+				// From here on, entries only keeps the unresolved card perms that have no move to an unresolved child yet.
 				{ // forwards movegen - check if all possible p0 moves are resolved
 					U32 sourcePieces = bbp0;
 					for (int iSrc = 0; iSrc < P0C; iSrc++) {
@@ -106,14 +100,13 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 							const U32 bbp0_new = bbp0_without_source | landPiece;
 
 							if constexpr (STEP == 1) {
-								auto* entryIt = it;
-								auto childIt = unresolvedChildren.begin();
+								auto entryIt = entries.begin();
 								for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 									auto& rowK0 = rowP1[ik0];
 									const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
 									const U32 bbk0_new = sourcePiece == bbk0 ? landPiece : bbk0;
-									for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, entryIt++, childIt++) {
-										if (!entryIt->load(std::memory_order_relaxed)) // already resolved, e.g. win in 0
+									for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, entryIt++) {
+										if (!*entryIt) // already resolved (e.g. win in 0), or every perm already has a move to an unresolved child
 											continue;
 										const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
 										if (landPiece == bbk1) // King takes are obviously resolved
@@ -124,7 +117,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 											.bbk = { bbk0_new, bbk1 },
 										};
 										const U32 unresolvedChild = ~board.getWinInOneCards<1>(cards.moveBoardsForward);
-										*childIt |= unresolvedChild & cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)];
+										*entryIt &= ~unmoveCardEntry(unresolvedChild & cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)]);
 									}
 								}
 							} else {
@@ -174,12 +167,18 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 									}
 								}
 
-								for (int i = 0; i < P0C * P1C; i++)
-									unresolvedChildren[i] |= otherEntry[i] & cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)];
+								U32 remaining = 0;
+								for (int i = 0; i < P0C * P1C; i++) {
+									entries[i] &= ~unmoveCardEntry(otherEntry[i] & cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)]);
+									remaining |= entries[i];
+								}
+								if (!remaining)
+									goto ForwardMovegenDone;
 							}
 						}
 					}
 				}
+				ForwardMovegenDone:
 
 
 
@@ -189,7 +188,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 				for (int i = 0; i < P0C * P1C; i++) {
 					// Reload after the acquire loads of the children: a child that was seen resolved as a loss has
 					// already marked its parents (this entry) before releasing, so those win bits must not count as lost.
-					newLostEntries[i] = it[i].load(std::memory_order_acquire) & ~unmoveCardEntry(unresolvedChildren[i]);
+					newLostEntries[i] = it[i].load(std::memory_order_acquire) & entries[i];
 					lostUnion |= newLostEntries[i];
 				}
 				if (!lostUnion)
