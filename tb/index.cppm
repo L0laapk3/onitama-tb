@@ -1,5 +1,6 @@
 module;
 #include <immintrin.h>
+#include "inline.h"
 export module tb:index;
 import std;
 import :types;
@@ -15,13 +16,13 @@ export struct PieceCount {
 export template <U16 TB_MEN>
 constexpr auto PIECE_COUNTS = [] {
 	std::array<PieceCount, TB_MEN / 2 * TB_MEN / 2> a;
-	int index = 0;
+	int index = a.size();
 	for (int i = TB_MEN - 1; i-- > 0;)
 		for (int j = i % 2; j <= TB_MEN; j += 2)
 			for (int k = -1; k <= (j == 0 ? 0 : 1); k += 2)
 				if (i - j >= 0 && i + j <= TB_MEN - 2) {
 					int p0c = (i - k * j) / 2, p1c = (i + k * j) / 2;
-					a[index++] = {static_cast<U16>(p0c + 1), static_cast<U16>(p1c + 1)};
+					a[--index] = {static_cast<U16>(p0c + 1), static_cast<U16>(p1c + 1)};
 				}
 	return a;
 }();
@@ -49,11 +50,11 @@ constexpr auto PIECE_PLACEMENTS = [] {
 	return a;
 }();
 
-export template <U16 TB_MEN, std::size_t ROW>
-constexpr auto& PAWNTABLE_P0 = PIECE_PLACEMENTS<25, PIECE_COUNTS<TB_MEN>[ROW].p0c>;
+export template <U16 P0C, U16 P1C>
+constexpr auto& PAWNTABLE_P0 = PIECE_PLACEMENTS<25, P0C>;
 
-export template <U16 TB_MEN, std::size_t ROW>
-constexpr auto& PAWNTABLE_P1 = PIECE_PLACEMENTS<25 - PIECE_COUNTS<TB_MEN>[ROW].p0c, PIECE_COUNTS<TB_MEN>[ROW].p1c>;
+export template <U16 P0C, U16 P1C>
+constexpr auto& PAWNTABLE_P1 = PIECE_PLACEMENTS<25 - P0C, P1C>;
 
 template <U32 BITS, std::size_t N>
 constexpr auto reversePlacements(const std::array<U32, N>& placements) {
@@ -63,50 +64,50 @@ constexpr auto reversePlacements(const std::array<U32, N>& placements) {
 	return a;
 }
 
-export template <U16 TB_MEN, std::size_t ROW>
-constexpr auto PAWNTABLE_P0_INV = reversePlacements<25>(PAWNTABLE_P0<TB_MEN, ROW>);
+export template <U16 P0C, U16 P1C>
+constexpr auto PAWNTABLE_P0_INV = reversePlacements<25>(PAWNTABLE_P0<P0C, P1C>);
 
-export template <U16 TB_MEN, std::size_t ROW>
-constexpr auto PAWNTABLE_P1_INV = reversePlacements<25 - PIECE_COUNTS<TB_MEN>[ROW].p0c>(PAWNTABLE_P1<TB_MEN, ROW>);
+export template <U16 P0C, U16 P1C>
+constexpr auto PAWNTABLE_P1_INV = reversePlacements<25 - P0C>(PAWNTABLE_P1<P0C, P1C>);
 
-export template <U16 TB_MEN, std::size_t ROW, bool invert>
-U32 unrankFirstPieces(int ip) {
+export template <bool invert, U16 P0C, U16 P1C>
+__FORCE_INLINE U32 unrankFirstPieces(int ip) {
 	if constexpr (!invert)
-		return PAWNTABLE_P0<TB_MEN, ROW>[ip];
+		return PAWNTABLE_P0<P0C, P1C>[ip];
 	else
-		return PAWNTABLE_P0_INV<TB_MEN, ROW>[ip];
+		return PAWNTABLE_P0_INV<P0C, P1C>[ip];
 }
 
-export template <U16 TB_MEN, std::size_t ROW, bool invert>
-U32 unrankSecondPieces(int ip, U32 bbpOther) {
+export template <bool invert, U16 P0C, U16 P1C>
+__FORCE_INLINE U32 unrankSecondPieces(int ip, U32 bbpOther) {
 	if constexpr (!invert)
-		return _pdep_u32(PAWNTABLE_P1<TB_MEN, ROW>[ip], ~bbpOther);
+		return _pdep_u32(PAWNTABLE_P1<P0C, P1C>[ip], ~bbpOther);
 	else
-		return _pdep_u32(PAWNTABLE_P1_INV<TB_MEN, ROW>[ip], ~bbpOther);
+		return _pdep_u32(PAWNTABLE_P1_INV<P0C, P1C>[ip], ~bbpOther);
 }
 
-template <U16 TB_MEN, std::size_t ROW, bool first, bool invert>
-U32 unrankKings(int ik, U32 bbp) {
+template <bool first, bool invert, U16 P0C, U16 P1C>
+__FORCE_INLINE U32 unrankKings(int ik, U32 bbp) {
 	if constexpr (!invert)
 		return _pdep_u32(1U << ik, bbp);
 	else if constexpr (first)
-		return _pdep_u32(1U << (PIECE_COUNTS<TB_MEN>[ROW].p0c - 1) >> ik, bbp);
+		return _pdep_u32(1U << (P0C - 1) >> ik, bbp);
 	else
-		return _pdep_u32(1U << (PIECE_COUNTS<TB_MEN>[ROW].p1c - 1) >> ik, bbp);
+		return _pdep_u32(1U << (P1C - 1) >> ik, bbp);
 }
 
-export template <U16 TB_MEN, std::size_t ROW, bool invert>
-U32 unrankFirstKing(int ik, U32 bbp) {
-	return unrankKings<TB_MEN, ROW, true, invert>(ik, bbp);
+export template <bool invert, U16 P0C, U16 P1C>
+__FORCE_INLINE U32 unrankFirstKing(int ik, U32 bbp) {
+	return unrankKings<true, invert, P0C, P1C>(ik, bbp);
 }
 
-export template <U16 TB_MEN, std::size_t ROW, bool invert>
-U32 unrankSecondKing(int ik, U32 bbp) {
-	return unrankKings<TB_MEN, ROW, false, invert>(ik, bbp);
+export template <bool invert, U16 P0C, U16 P1C>
+__FORCE_INLINE U32 unrankSecondKing(int ik, U32 bbp) {
+	return unrankKings<false, invert, P0C, P1C>(ik, bbp);
 }
 
-export template <U16 TB_MEN, std::size_t ROW, bool invert, U16 N = PIECE_COUNTS<TB_MEN>[ROW].p0c>
-int rankFirstPieces(U32 bbp) {
+export template <bool invert, U16 P0C, U16 P1C, U16 N = P0C>
+__FORCE_INLINE int rankFirstPieces(U32 bbp) {
 	std::array<U32, N> ip;
 	if constexpr (!invert) {
 		for (int i = 0; i < static_cast<int>(ip.size()); i++) {
@@ -130,28 +131,28 @@ int rankFirstPieces(U32 bbp) {
 	return index;
 }
 
-export template <U16 TB_MEN, std::size_t ROW, bool invert>
-int rankSecondPieces(U32 bbp, U32 bbpOther) {
+export template <bool invert, U16 P0C, U16 P1C>
+__FORCE_INLINE int rankSecondPieces(U32 bbp, U32 bbpOther) {
 	bbp = _pext_u32(bbp, ~bbpOther);
 	if constexpr (invert)
-		bbp <<= PIECE_COUNTS<TB_MEN>[ROW].p0c;
-	return rankFirstPieces<TB_MEN, ROW, invert, PIECE_COUNTS<TB_MEN>[ROW].p1c>(bbp);
+		bbp <<= P0C;
+	return rankFirstPieces<invert, P0C, P1C, P1C>(bbp);
 }
 
-export template <U16 TB_MEN, std::size_t ROW, bool invert>
-int rankKings(U32 bbk, U32 bbp) {
+export template <bool invert, U16 P0C, U16 P1C>
+__FORCE_INLINE int rankKings(U32 bbk, U32 bbp) {
 	if constexpr (!invert)
 		return std::popcount((bbk - 1) & bbp);
 	else
 		return std::popcount(-(bbk << 1) & bbp);
 }
 
-export template <U16 TB_MEN, std::size_t ROW, bool invert>
-int rankFirstKing(U32 bbk, U32 bbp) {
-	return rankKings<TB_MEN, ROW, invert>(bbk, bbp);
+export template <bool invert, U16 P0C, U16 P1C>
+__FORCE_INLINE int rankFirstKing(U32 bbk, U32 bbp) {
+	return rankKings<invert, P0C, P1C>(bbk, bbp);
 }
 
-export template <U16 TB_MEN, std::size_t ROW, bool invert>
-int rankSecondKing(U32 bbk, U32 bbp) {
-	return rankKings<TB_MEN, ROW, invert>(bbk, bbp);
+export template <bool invert, U16 P0C, U16 P1C>
+__FORCE_INLINE int rankSecondKing(U32 bbk, U32 bbp) {
+	return rankKings<invert, P0C, P1C>(bbk, bbp);
 }

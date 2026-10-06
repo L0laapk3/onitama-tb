@@ -6,7 +6,8 @@ import :board;
 import :index;
 import :sync;
 
-namespace tablebase_impl {
+export template <U16 TB_MEN>
+struct TableBase;
 
 struct ThreadObj {
 	Sync sync;
@@ -17,53 +18,47 @@ struct ThreadObj {
 constexpr U64 CHUNK_P0_POSITIONS = 1;
 constexpr bool VERBOSE = true;
 
-
 // STEP 1: no TB lookups, just check win in 0/invalid boards & win in 1.
 // STEP 2: TB lookups.
-template <U16 TB_MEN, U32 ROW, int STEP>
+template <U16 TB_MEN, U16 P0C, U16 P1C, int STEP>
 void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk, std::atomic<U64>& chunkCounter, bool& updated) {
-	auto& row = std::get<ROW>(tb);
+	auto& row = std::get<rowIndex<TB_MEN>(P0C, P1C)>(tb);
 
-	constexpr auto PC = PIECE_COUNTS<TB_MEN>[ROW];
-	constexpr int MIRROR_ROW = rowIndex<TB_MEN>(PC.p1c, PC.p0c);
-	constexpr int P0_TAKEN_ROW = rowIndex<TB_MEN>(PC.p1c - 1, PC.p0c);
-	constexpr int P1_UNTAKEN_ROW = rowIndex<TB_MEN>(PC.p1c, PC.p0c + 1);
-
-	// Iterate in MIRROR_ROW order: the outer loop fixes p1's pieces, so all non-take children share MIRROR_ROW[ip0_new].
-	constexpr U32 OUTER_SIZE = PAWNTABLE_P0<TB_MEN, MIRROR_ROW>.size();
-	constexpr U32 INNER_SIZE = PAWNTABLE_P1<TB_MEN, MIRROR_ROW>.size();
+	// Iterate in mirrored <P1C, P0C> order: the outer loop fixes p1's pieces, so all non-take children share the mirrored row at ip0_new.
+	constexpr U32 OUTER_SIZE = PAWNTABLE_P0<P1C, P0C>.size();
+	constexpr U32 INNER_SIZE = PAWNTABLE_P1<P1C, P0C>.size();
 	constexpr U64 P0_CHUNKS = (OUTER_SIZE - 1) / CHUNK_P0_POSITIONS + 1;
 
 	for (; chunk < rowStartChunk + P0_CHUNKS; chunk = chunkCounter++) {
 		const U32 begin = static_cast<U32>((chunk - rowStartChunk) * CHUNK_P0_POSITIONS);
 		const U32 end = std::min<U32>(begin + CHUNK_P0_POSITIONS, OUTER_SIZE);
 		for (int ip0_new = begin; ip0_new < end; ip0_new++) { // loop over the outer table in an order that maximizes locality for forward move generation
-			const U32 bbp1 = unrankFirstPieces<TB_MEN, MIRROR_ROW, true>(ip0_new);
-			std::array<int, PC.p1c> ip0s_taken; // precalculate all the ranks for different taken pieces
-			if constexpr (PC.p1c > 1) {
+			const U32 bbp1 = unrankFirstPieces<true, P1C, P0C>(ip0_new);
+			std::array<int, P1C> ip0s_taken; // precalculate all the ranks for different taken pieces
+			if constexpr (P1C > 1) {
 				U32 bbp1_source = bbp1;
-				for (int i = 0; i < PC.p1c; i++) {
+				for (int i = 0; i < P1C; i++) {
 					const U32 pp1 = bbp1_source & -bbp1_source;
 					bbp1_source &= bbp1_source - 1;
-					ip0s_taken[i] = rankFirstPieces<TB_MEN, P0_TAKEN_ROW, true>(bbp1 - pp1);
+					ip0s_taken[i] = rankFirstPieces<true, P1C - 1, P0C>(bbp1 - pp1);
 				}
 			}
 			for (int ipInner = 0; ipInner < static_cast<int>(INNER_SIZE); ipInner++) {
-				const U32 bbp0 = unrankSecondPieces<TB_MEN, MIRROR_ROW, true>(ipInner, bbp1);
-				auto& rowP1 = row[rankFirstPieces<TB_MEN, ROW, false>(bbp0)][rankSecondPieces<TB_MEN, ROW, false>(bbp1, bbp0)];
+				const U32 bbp0 = unrankSecondPieces<true, P1C, P0C>(ipInner, bbp1);
+				auto& rowP1 = row[rankFirstPieces<false, P0C, P1C>(bbp0)][rankSecondPieces<false, P0C, P1C>(bbp1, bbp0)];
 				auto* it = &rowP1[0][0];
 				{ // Optimization: If the entire block of king perms is empty, continue early
 					auto* entryIt = it;
 					bool blockHasUnresolved = false; // STEP 1 has to initialize every entry of the block before jumping
 					for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 						auto& rowK0 = rowP1[ik0];
-						const U32 bbk0 = unrankFirstKing<TB_MEN, ROW, false>(ik0, bbp0);
+						const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
 						for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++) {
 
 							auto& cardsEntry = *(entryIt++);
 							U32 entry;
 							if constexpr (STEP == 1) {
-								const U32 bbk1 = unrankSecondKing<TB_MEN, ROW, false>(ik1, bbp1);
+								const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
 								// Other threads may already have reverse marked bits of this entry as win in 3: clear with RMWs to keep those marks.
 								Board board{ bbp0, bbp1, bbk0, bbk1 };
 								if (board.isTempleEnded()) { // Win in 0
@@ -92,10 +87,10 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 					BlockHasUnresolved:
 				}
 
-				std::array<U32, PC.p0c * PC.p1c> unresolvedChildren{0};
+				std::array<U32, P0C * P1C> unresolvedChildren{0};
 				{ // forwards movegen - check if all possible p0 moves are resolved
 					U32 sourcePieces = bbp0;
-					for (int iSrc = 0; iSrc < PC.p0c; iSrc++) {
+					for (int iSrc = 0; iSrc < P0C; iSrc++) {
 						const U32 sourcePiece = sourcePieces & -sourcePieces;
 						int pp = std::countr_zero(sourcePieces);
 						sourcePieces &= sourcePieces - 1;
@@ -111,12 +106,12 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 								auto childIt = unresolvedChildren.begin();
 								for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 									auto& rowK0 = rowP1[ik0];
-									const U32 bbk0 = unrankFirstKing<TB_MEN, ROW, false>(ik0, bbp0);
+									const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
 									const U32 bbk0_new = sourcePiece == bbk0 ? landPiece : bbk0;
 									for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, entryIt++, childIt++) {
 										if (!entryIt->load(std::memory_order_relaxed)) // already resolved, e.g. win in 0
 											continue;
-										const U32 bbk1 = unrankSecondKing<TB_MEN, ROW, false>(ik1, bbp1);
+										const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
 										if (landPiece == bbk1) // King takes are obviously resolved
 											continue;
 
@@ -130,53 +125,53 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 								}
 							} else {
 								const bool isTakeMove = landPiece & bbp1;
-								std::array<U32, PC.p0c * PC.p1c> otherEntry; // unresolved bits of the child
+								std::array<U32, P0C * P1C> otherEntry; // unresolved bits of the child
 								auto otherIt = otherEntry.begin();
 								if (!isTakeMove) {
-									const int ip1_new = rankSecondPieces<TB_MEN, MIRROR_ROW, true>(bbp0_new, bbp1);
-									const auto& pawnRow_new = std::get<MIRROR_ROW>(tb)[ip0_new][ip1_new];
+									const int ip1_new = rankSecondPieces<true, P1C, P0C>(bbp0_new, bbp1);
+									const auto& pawnRow_new = std::get<rowIndex<TB_MEN>(P1C, P0C)>(tb)[ip0_new][ip1_new];
 									__builtin_prefetch(pawnRow_new.data(), 0, 0);
 
 									for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 										auto& rowK0 = rowP1[ik0];
-										const U32 bbk0 = unrankFirstKing<TB_MEN, ROW, false>(ik0, bbp0);
+										const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
 										const U32 bbk0_new = sourcePiece == bbk0 ? landPiece : bbk0;
-										const U32 ik1_new = rankSecondKing<TB_MEN, MIRROR_ROW, true>(bbk0_new, bbp0_new);
+										const U32 ik1_new = rankSecondKing<true, P1C, P0C>(bbk0_new, bbp0_new);
 										for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, otherIt++) {
-											const U32 ik0_new = PC.p1c - 1 - ik1; // invert board
+											const U32 ik0_new = P1C - 1 - ik1; // invert board
 											*otherIt = pawnRow_new[ik0_new][ik1_new].load(std::memory_order_acquire);
 										}
 									}
 
 								} else {
-									if constexpr (PC.p1c == 1) {
+									if constexpr (P1C == 1) {
 										std::unreachable();
 									} else {
 										const U32 bbp1_taken = bbp1 & ~landPiece;
 										const int ip0_taken = ip0s_taken[std::popcount(bbp1 & (landPiece - 1))];
-										const int ip1_taken = rankSecondPieces<TB_MEN, P0_TAKEN_ROW, true>(bbp0_new, bbp1_taken);
-										const auto& pawnrow_taken = std::get<P0_TAKEN_ROW>(tb)[ip0_taken][ip1_taken];
+										const int ip1_taken = rankSecondPieces<true, P1C - 1, P0C>(bbp0_new, bbp1_taken);
+										const auto& pawnrow_taken = std::get<rowIndex<TB_MEN>(P1C - 1, P0C)>(tb)[ip0_taken][ip1_taken];
 										__builtin_prefetch(pawnrow_taken.data(), 0, 0);
 
 										for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 											auto& rowK0 = rowP1[ik0];
-											const U32 bbk0 = unrankFirstKing<TB_MEN, ROW, false>(ik0, bbp0);
+											const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
 											const U32 bbk0_new = sourcePiece == bbk0 ? landPiece : bbk0;
-											const U32 ik1_taken = rankSecondKing<TB_MEN, P0_TAKEN_ROW, true>(bbk0_new, bbp0_new);
+											const U32 ik1_taken = rankSecondKing<true, P1C - 1, P0C>(bbk0_new, bbp0_new);
 											for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, otherIt++) {
-												const U32 bbk1 = unrankSecondKing<TB_MEN, ROW, false>(ik1, bbp1);
+												const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
 												if (landPiece == bbk1) { // King takes are obviously resolved
 													*otherIt = 0;
 													continue;
 												}
-												const U32 ik0_taken = PC.p1c - 1 - ik1 - (landPiece > bbk1); // invert board, the taken piece shifts the king down if above it
+												const U32 ik0_taken = P1C - 1 - ik1 - (landPiece > bbk1); // invert board, the taken piece shifts the king down if above it
 												*otherIt = pawnrow_taken[ik0_taken][ik1_taken].load(std::memory_order_acquire);
 											}
 										}
 									}
 								}
 
-								for (int i = 0; i < PC.p0c * PC.p1c; i++)
+								for (int i = 0; i < P0C * P1C; i++)
 									unresolvedChildren[i] |= otherEntry[i] & cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)];
 							}
 						}
@@ -186,9 +181,9 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 
 
 				// Unresolved card perms where every move leads to a resolved child, i.e. a win for the opponent.
-				std::array<U32, PC.p0c * PC.p1c> newLostEntries;
+				std::array<U32, P0C * P1C> newLostEntries;
 				U32 lostUnion = 0;
-				for (int i = 0; i < PC.p0c * PC.p1c; i++) {
+				for (int i = 0; i < P0C * P1C; i++) {
 					// Reload after the acquire loads of the children: a child that was seen resolved as a loss has
 					// already marked its parents (this entry) before releasing, so those win bits must not count as lost.
 					newLostEntries[i] = it[i].load(std::memory_order_acquire) & ~unmoveCardEntry(unresolvedChildren[i]);
@@ -200,7 +195,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 				{ // reverse movegen - all entries that can reach this entry are also marked as resolved.
 					const U32 usedCards = usedCardsOfEntry(lostUnion);
 					U32 sourcePieces = bbp1;
-					for (int iSrc = 0; iSrc < PC.p1c; iSrc++) {
+					for (int iSrc = 0; iSrc < P1C; iSrc++) {
 						const U32 sourcePiece = sourcePieces & -sourcePieces;
 						int pp = std::countr_zero(sourcePieces);
 						sourcePieces &= sourcePieces - 1;
@@ -211,17 +206,17 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 							landPieces &= landPieces - 1;
 							const U32 bbp1_new = bbp1_without_source | landPiece;
 
-							const int ip0_new = rankFirstPieces<TB_MEN, MIRROR_ROW, true>(bbp1_new);
-							const int ip1_new = rankSecondPieces<TB_MEN, MIRROR_ROW, true>(bbp0, bbp1_new); // TODO incremental?
-							auto& pawnRow_new = std::get<MIRROR_ROW>(tb)[ip0_new][ip1_new];
+							const int ip0_new = rankFirstPieces<true, P1C, P0C>(bbp1_new);
+							const int ip1_new = rankSecondPieces<true, P1C, P0C>(bbp0, bbp1_new); // TODO incremental?
+							auto& pawnRow_new = std::get<rowIndex<TB_MEN>(P1C, P0C)>(tb)[ip0_new][ip1_new];
 							__builtin_prefetch(pawnRow_new.data(), 0, 0);
 
-							auto& pawnRow_untaken = [&] -> auto& { // P1_UNTAKEN_ROW does not exist for the other rows
-								if constexpr (PC.p0c < TB_MEN / 2) {
+							auto& pawnRow_untaken = [&] -> auto& { // the <P1C, P0C + 1> row does not exist for the other rows
+								if constexpr (P0C < TB_MEN / 2) {
 									const U32 bbp0_untaken = bbp0 | sourcePiece;
-									const int ip0_untaken = rankFirstPieces<TB_MEN, P1_UNTAKEN_ROW, true>(bbp1_new);
-									const int ip1_untaken = rankSecondPieces<TB_MEN, P1_UNTAKEN_ROW, true>(bbp0_untaken, bbp1_new); // TODO incremental?
-									auto& pawnRow_untaken = std::get<P1_UNTAKEN_ROW>(tb)[ip0_untaken][ip1_untaken];
+									const int ip0_untaken = rankFirstPieces<true, P1C, P0C + 1>(bbp1_new);
+									const int ip1_untaken = rankSecondPieces<true, P1C, P0C + 1>(bbp0_untaken, bbp1_new); // TODO incremental?
+									auto& pawnRow_untaken = std::get<rowIndex<TB_MEN>(P1C, P0C + 1)>(tb)[ip0_untaken][ip1_untaken];
 									__builtin_prefetch(pawnRow_untaken.data(), 0, 0);
 									return pawnRow_untaken;
 								} else
@@ -233,20 +228,20 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 							for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 								auto& rowK0 = rowP1[ik0];
 								U32 bbk0;
-								if constexpr (PC.p0c < TB_MEN / 2)
-									bbk0 = unrankFirstKing<TB_MEN, ROW, false>(ik0, bbp0);
-								const U32 ik1_new = PC.p0c - 1 - ik0; // invert board
+								if constexpr (P0C < TB_MEN / 2)
+									bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
+								const U32 ik1_new = P0C - 1 - ik0; // invert board
 								for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, lostIt++) {
 									const U32 lostBits = *lostIt & sideCards;
 									if (!lostBits)
 										continue;
 									const U32 newEntryBits = unmoveCardEntry(lostBits);
-									const U32 bbk1 = unrankSecondKing<TB_MEN, ROW, false>(ik1, bbp1);
+									const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
 									const U32 bbk1_new = sourcePiece == bbk1 ? landPiece : bbk1;
-									const U32 ik0_new = rankFirstKing<TB_MEN, MIRROR_ROW, true>(bbk1_new, bbp1_new);
+									const U32 ik0_new = rankFirstKing<true, P1C, P0C>(bbk1_new, bbp1_new);
 									pawnRow_new[ik0_new][ik1_new].fetch_and(~newEntryBits, std::memory_order_relaxed);
 
-									if constexpr (PC.p0c < TB_MEN / 2) {
+									if constexpr (P0C < TB_MEN / 2) {
 										const int ik1_untaken = ik1_new + (sourcePiece > bbk0); // the untaken piece shifts the king up if above it
 										pawnRow_untaken[ik0_new][ik1_untaken].fetch_and(~newEntryBits, std::memory_order_relaxed);
 									}
@@ -256,7 +251,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 					}
 				}
 
-				for (int i = 0; i < PC.p0c * PC.p1c; i++) {
+				for (int i = 0; i < P0C * P1C; i++) {
 					// Only after the reverse movegen, so a thread that sees these bits set also sees the parents marked.
 					if (newLostEntries[i])
 						it[i].fetch_and(~newLostEntries[i], std::memory_order_release);
@@ -273,9 +268,9 @@ void singleDepthPass(const CardsInfo& cards, Storage& tb, std::atomic<U64>& chun
 	U64 chunk = chunkCounter++;
 	U64 rowStartChunk = 0;
 
-	[&]<U32... ROW>(std::integer_sequence<U32, ROW...>) {
-		(processRow<TB_MEN, std::tuple_size_v<Storage> - 1 - ROW, STEP>(cards, tb, chunk, rowStartChunk, chunkCounter, updated), ...);
-	}(std::make_integer_sequence<U32, std::tuple_size_v<Storage>>{});
+	TableBase<TB_MEN>::forEachRow([&]<U16 P0C, U16 P1C> {
+		processRow<TB_MEN, P0C, P1C, STEP>(cards, tb, chunk, rowStartChunk, chunkCounter, updated);
+	});
 }
 
 template <typename Storage>
@@ -311,13 +306,13 @@ U64 countUnresolved(const Storage& tb) {
 	return count;
 }
 
-template <U16 TB_MEN, U32... ROW>
-consteval U64 countTotal(std::integer_sequence<U32, ROW...>) {
-	return (0ULL + ... + (30ULL
-		* PAWNTABLE_P0<TB_MEN, ROW>.size()
-		* PAWNTABLE_P1<TB_MEN, ROW>.size()
-		* PIECE_COUNTS<TB_MEN>[ROW].p0c
-		* PIECE_COUNTS<TB_MEN>[ROW].p1c));
+template <U16 TB_MEN>
+consteval U64 countTotal() {
+	U64 total = 0;
+	TableBase<TB_MEN>::forEachRow([&]<U16 P0C, U16 P1C> {
+		total += 30ULL * PAWNTABLE_P0<P0C, P1C>.size() * PAWNTABLE_P1<P0C, P1C>.size() * P0C * P1C;
+	});
+	return total;
 }
 
 template <U16 TB_MEN, typename Storage>
@@ -354,7 +349,7 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, U64 stopAtIteration,
 	std::chrono::duration<double> countingTime{};
 	U64 resolvedStates = 0;
 	U64 newResolvedStates = 1;
-	constexpr U64 total = countTotal<TB_MEN>(std::make_integer_sequence<U32, PIECE_COUNTS<TB_MEN>.size()>{});
+	constexpr U64 total = countTotal<TB_MEN>();
 	while (comm.updated && comm.iteration <= stopAtIteration) {
 		chunkCounter = 0;
 		comm.updated = false;
@@ -368,7 +363,7 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, U64 stopAtIteration,
 			const U64 count = total - countUnresolved(tb);
 			newResolvedStates = count - resolvedStates;
 			resolvedStates = count;
-			if (iterationTime.count() > .1 || newResolvedStates == 0)
+			if (iterationTime.count() > .02 || newResolvedStates == 0)
 				std::cout << std::format("it {:3}: {:12} ({:.4f}%) in {:.2f} seconds\n", comm.iteration, newResolvedStates, 100.0 * resolvedStates / total, iterationTime.count());
 		} else
 			std::cout << "." << std::flush;
@@ -393,28 +388,32 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, U64 stopAtIteration,
 		thread.join();
 }
 
-} // namespace tablebase_impl
-
 export template <U16 TB_MEN>
 struct TableBase {
 	using CardsEntry = std::atomic<U32>;
 
-	template <U16 ROW_I>
-	using TableKingPermsP1 = std::array<CardsEntry, PIECE_COUNTS<TB_MEN>[ROW_I].p1c>;
+	template <U16 P0C, U16 P1C>
+	using TableKingPermsP1 = std::array<CardsEntry, P1C>;
 
-	template <U16 ROW_I>
-	using TableKingPermsP0 = std::array<TableKingPermsP1<ROW_I>, PIECE_COUNTS<TB_MEN>[ROW_I].p0c>;
+	template <U16 P0C, U16 P1C>
+	using TableKingPermsP0 = std::array<TableKingPermsP1<P0C, P1C>, P0C>;
 
-	template <U16 ROW_I>
-	using TableP1 = std::array<TableKingPermsP0<ROW_I>, PAWNTABLE_P1<TB_MEN, ROW_I>.size()>;
+	template <U16 P0C, U16 P1C>
+	using TableP1 = std::array<TableKingPermsP0<P0C, P1C>, PAWNTABLE_P1<P0C, P1C>.size()>;
 
-	template <U16 ROW_I>
-	struct alignas(64) TableRow : std::array<TableP1<ROW_I>, PAWNTABLE_P0<TB_MEN, ROW_I>.size()> {};
+	template <U16 P0C, U16 P1C>
+	struct alignas(64) TableRow : std::array<TableP1<P0C, P1C>, PAWNTABLE_P0<P0C, P1C>.size()> {};
 
 	template <std::size_t... I>
-	static auto tableBaseStorage(std::index_sequence<I...>) -> std::tuple<TableRow<I>...>;
+	static auto tableBaseStorage(std::index_sequence<I...>) -> std::tuple<TableRow<PIECE_COUNTS<TB_MEN>[I].p0c, PIECE_COUNTS<TB_MEN>[I].p1c>...>;
 
 	using TableBaseStorage = decltype(tableBaseStorage(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{}));
+
+	static constexpr void forEachRow(auto&& f) {
+		[&]<std::size_t... I>(std::index_sequence<I...>) {
+			(f.template operator()<PIECE_COUNTS<TB_MEN>[I].p0c, PIECE_COUNTS<TB_MEN>[I].p1c>(), ...);
+		}(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{});
+	}
 
 	explicit TableBase(const CardsInfo& cards, U64 stopAtIteration = std::numeric_limits<U64>::max()) {
 		const auto allocStart = std::chrono::steady_clock::now();
@@ -425,7 +424,7 @@ struct TableBase {
 
 		const std::chrono::duration<double> allocTime = std::chrono::steady_clock::now() - allocStart;
 		std::cout << std::format("allocated {:.1f}GB in {:.2f} seconds\n", sizeof(TableBaseStorage) / 1e9, allocTime.count());
-		tablebase_impl::runTableBaseBuild<TB_MEN>(cards, *tb, stopAtIteration, allocStart);
+		runTableBaseBuild<TB_MEN>(cards, *tb, stopAtIteration, allocStart);
 	}
 
 	std::unique_ptr<TableBaseStorage> tb;

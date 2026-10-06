@@ -2,7 +2,7 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 
 cc_binary(
     name = "tb",
-    srcs = ["main.cpp"],
+    srcs = ["main.cpp", "inline.h"],
     module_interfaces = glob(["**/*.cppm"]),
     features = ["cpp_modules"],
 )

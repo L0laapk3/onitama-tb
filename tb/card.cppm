@@ -1,3 +1,5 @@
+module;
+#include "inline.h"
 export module tb:card;
 import std;
 import :types;
@@ -133,13 +135,13 @@ export constexpr auto SIDE_CARD_MASK = [] {
 }();
 
 // Same mover's hand, other side card.
-export constexpr U32 otherSideCards(U32 bits) {
+export __FORCE_INLINE constexpr U32 otherSideCards(U32 bits) {
 	const U64 rotated = (U64(bits) << 10) | (U64(bits) << 20);
 	return static_cast<U32>(rotated | (rotated >> 30)) & CARD_PERMS_MASK;
 }
 
 // Same as CARDS_INVERT, but on the bits of an entry.
-export constexpr U32 swapPlayers(U32 bits) {
+export __FORCE_INLINE constexpr U32 swapPlayers(U32 bits) {
 	constexpr U32 TRIPLE_LOW = 0b001001'001001'001001'001001'001001;
 	constexpr U32 HALF_LOW = 0b000111'000111'000111'000111'000111;
 	bits = (bits & TRIPLE_LOW) | ((bits & TRIPLE_LOW << 1) << 1) | ((bits & TRIPLE_LOW << 2) >> 1);
@@ -147,11 +149,11 @@ export constexpr U32 swapPlayers(U32 bits) {
 }
 
 // Given an input card entry with these bits, return the bits that can move into one of these moves.
-export constexpr U32 unmoveCardEntry(U32 after) {
+export __FORCE_INLINE constexpr U32 unmoveCardEntry(U32 after) {
 	return swapPlayers(otherSideCards(after));
 }
 // Given an input card entry with these bits, return the bits that are the result of any move (with either card)
-export constexpr U32 moveCardEntry(U32 after) {
+export __FORCE_INLINE constexpr U32 moveCardEntry(U32 after) {
 	// return swapPlayers(otherSideCards(after));
 	return after; // TODO
 }
@@ -174,7 +176,7 @@ static_assert([] {
 
 
 // Bit i: card i is the side card in at least one of these permutations, i.e. it was just used to move.
-export constexpr U32 usedCardsOfEntry(U32 cardEntry) {
+export __FORCE_INLINE constexpr U32 usedCardsOfEntry(U32 cardEntry) {
 	U32 cards = 0;
 	for (int i = 0; i < 5; i++)
 		cards |= U32((cardEntry & SIDE_CARD_MASK[i]) != 0) << i;
@@ -238,7 +240,7 @@ constexpr auto generateMoveBoardSet(const CardSet& cards) {
 }
 
 // Squares reachable from pp with any of these cards (bit i = card i).
-export constexpr U32 landingsForCards(int pp, U32 cards, const MoveBoardSet& set) {
+export __FORCE_INLINE constexpr U32 landingsForCards(int pp, U32 cards, const MoveBoardSet& set) {
 	U32 landings = 0;
 	for (; cards; cards &= cards - 1)
 		landings |= set.moveBoards[std::countr_zero(cards)][pp];

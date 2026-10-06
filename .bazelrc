@@ -33,11 +33,13 @@ build --cxxopt='-Wno-nested-anon-types'
 
 # Default build: release
 build --copt=-O3 --copt=-ffast-math --copt=-flto --linkopt=-flto
+build --copt=-DNDEBUG
 build --strip=always
 
 build:symbols --copt=-g --strip=never
 
 build:dbg --config=symbols
+build:dbg --copt=-UNDEBUG
 build:dbg --copt=-O0 --copt=-fno-fast-math --copt=-fno-lto --linkopt=-fno-lto
 build:dbg --copt=-fno-omit-frame-pointer
 build:dbg --compilation_mode=dbg
