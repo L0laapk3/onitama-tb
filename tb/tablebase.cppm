@@ -21,12 +21,44 @@ struct ThreadObj {
 constexpr U64 CHUNK_P0_POSITIONS = 1;
 constexpr bool VERBOSE = true;
 
-// STEP 1: no TableBase lookups, just check win in 0/invalid boards & win in 1.
+// STEP 0: initialize every entry: win in 0 and win in 1 resolved, the rest unresolved. This is the first touch of the table.
+template <U16 TB_MEN, U16 P0C, U16 P1C, int STEP>
+requires(STEP == 0)
+void processRow(const CardsInfo& cards, auto& tb, auto&, U64& chunk, U64& rowStartChunk, std::atomic<U64>& chunkCounter, bool& updated) {
+	auto& row = tb.template getRow<P0C, P1C>();
+	constexpr U64 P0_CHUNKS = (row.size() - 1) / CHUNK_P0_POSITIONS + 1;
+
+	for (; chunk < rowStartChunk + P0_CHUNKS; chunk = chunkCounter++) {
+		const U32 begin = static_cast<U32>((chunk - rowStartChunk) * CHUNK_P0_POSITIONS);
+		const U32 end = std::min<U32>(begin + CHUNK_P0_POSITIONS, row.size());
+		for (int ip0 = begin; ip0 < end; ip0++) {
+			const U32 bbp0 = unrankFirstPieces<false, P0C, P1C>(ip0);
+			for (int ip1 = 0; ip1 < static_cast<int>(row[ip0].size()); ip1++) {
+				const U32 bbp1 = unrankSecondPieces<false, P0C, P1C>(ip1, bbp0);
+				auto& rowP1 = row[ip0][ip1];
+				for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
+					const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
+					for (int ik1 = 0; ik1 < static_cast<int>(rowP1[ik0].size()); ik1++) {
+						const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
+						Board board{ bbp0, bbp1, bbk0, bbk1 };
+						const U32 entry = board.isTempleEnded() ? 0 : CARD_PERMS_MASK & ~board.getWinInOneCards<0>(cards.moveBoardsReverse);
+						rowP1[ik0][ik1].store(entry, std::memory_order_relaxed);
+					}
+				}
+			}
+		}
+	}
+	rowStartChunk += P0_CHUNKS;
+	updated = true;
+}
+
+// STEP 1: no TableBase lookups of the children, just check whether they are win in 0/win in 1.
 // STEP 2: TableBase lookups.
 template <U16 TB_MEN, U16 P0C, U16 P1C, int STEP>
-void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk, std::atomic<U64>& chunkCounter, bool& updated) {
+requires(STEP > 0)
+void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U64& rowStartChunk, std::atomic<U64>& chunkCounter, bool& updated) {
 	auto& row = tb.template getRow<P0C, P1C>();
-	auto& landingsRow = tb.template getLandings<P0C, P1C>();
+	auto& landingsRow = landings.template getRow<P0C, P1C>();
 
 	// Iterate in mirrored <P1C, P0C> order: the outer loop fixes p1's pieces, so all non-take children share the mirrored row at ip0_new.
 	constexpr U32 OUTER_SIZE = PAWNTABLE_P0<P1C, P0C>.size();
@@ -61,28 +93,13 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 
 				{ // Optimization: If the entire block of king perms is empty, continue early
 					auto* cardsEntry = it;
-					auto entryIt = entries.begin(); // every entry has to be read: STEP 1 initializes them, the forward movegen uses them
+					auto entryIt = entries.begin(); // every entry has to be read: the forward movegen uses them
 					for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 						auto& rowK0 = rowP1[ik0];
 						const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
 						for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, entryIt++, cardsEntry++) {
-							if constexpr (STEP == 1) {
-								const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
-								Board board{ bbp0, bbp1, bbk0, bbk1 };
-								// Other threads may already have reverse marked bits of this entry as win in 3: clear with RMWs to keep those marks.
-								if (board.isTempleEnded()) { // Win in 0
-									cardsEntry->store(0, std::memory_order_relaxed);
-									*entryIt = 0; // Win in 0 - skip all the forwards and backwards movegen
-								} else {
-									const U32 winInOneCards = board.getWinInOneCards<0>(cards.moveBoardsReverse);
-									*entryIt = cardsEntry->load(std::memory_order_relaxed);
-									if (*entryIt & winInOneCards)
-										*entryIt = cardsEntry->fetch_and(~winInOneCards, std::memory_order_relaxed) & ~winInOneCards;
-								}
-							} else {
-								// loop over all entries, when a stored bit is 1 that means the entry is still unresolved.
-								*entryIt = cardsEntry->load(std::memory_order_relaxed);
-							}
+							// loop over all entries, when a stored bit is 1 that means the entry is still unresolved.
+							*entryIt = cardsEntry->load(std::memory_order_relaxed);
 							unresolvedUnion |= *entryIt;
 						}
 					}
@@ -206,7 +223,8 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 						}
 					}
 				}
-				unresolvedLandings &= newUnresolvedLandings; // 0 means none helped: every unresolved entry is lost below, so the block becomes resolved
+				// STEP 1 is the first pass over the landings, so it initializes them. 0 means none helped: every unresolved entry is lost below, so the block becomes resolved
+				unresolvedLandings = STEP == 1 ? newUnresolvedLandings : unresolvedLandings & newUnresolvedLandings;
 
 				// Unresolved card perms where every move leads to a resolved child, i.e. a win for the opponent.
 				std::array<U32, P0C * P1C> newLostEntries;
@@ -289,13 +307,13 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 	rowStartChunk += P0_CHUNKS;
 }
 
-template <U16 TB_MEN, int STEP, typename Storage>
-void singleDepthPass(const CardsInfo& cards, Storage& tb, std::atomic<U64>& chunkCounter, bool& updated) {
+template <U16 TB_MEN, int STEP, typename Storage, typename Landings>
+void singleDepthPass(const CardsInfo& cards, Storage& tb, Landings& landings, std::atomic<U64>& chunkCounter, bool& updated) {
 	U64 chunk = chunkCounter++;
 	U64 rowStartChunk = 0;
 
 	tb.forEachRow([&]<U16 P0C, U16 P1C> {
-		processRow<TB_MEN, P0C, P1C, STEP>(cards, tb, chunk, rowStartChunk, chunkCounter, updated);
+		processRow<TB_MEN, P0C, P1C, STEP>(cards, tb, landings, chunk, rowStartChunk, chunkCounter, updated);
 	});
 }
 
@@ -340,8 +358,8 @@ consteval U64 countTotal() {
 	return total;
 }
 
-template <U16 TB_MEN, typename Storage>
-void singleThread(const CardsInfo& cards, Storage& tb, std::atomic<U64>& chunkCounter, ThreadObj& comm) {
+template <U16 TB_MEN, typename Storage, typename Landings>
+void singleThread(const CardsInfo& cards, Storage& tb, Landings& landings, std::atomic<U64>& chunkCounter, ThreadObj& comm) {
 	while (true) {
 		comm.sync.slaveNotifyWait();
 		if (comm.iteration == 0)
@@ -349,16 +367,18 @@ void singleThread(const CardsInfo& cards, Storage& tb, std::atomic<U64>& chunkCo
 
 		bool updated = false;
 		if (comm.iteration == 1)
-			singleDepthPass<TB_MEN, 1>(cards, tb, chunkCounter, updated);
+			singleDepthPass<TB_MEN, 0>(cards, tb, landings, chunkCounter, updated);
+		else if (comm.iteration == 2)
+			singleDepthPass<TB_MEN, 1>(cards, tb, landings, chunkCounter, updated);
 		else
-			singleDepthPass<TB_MEN, 2>(cards, tb, chunkCounter, updated);
+			singleDepthPass<TB_MEN, 2>(cards, tb, landings, chunkCounter, updated);
 		if (updated)
 			comm.updated.store(true, std::memory_order_relaxed);
 	}
 }
 
-template <U16 TB_MEN, typename Storage>
-void runTableBaseBuild(const CardsInfo& cards, Storage& tb, U64 stopAtIteration, std::chrono::steady_clock::time_point startTime) {
+template <U16 TB_MEN, typename Storage, typename Landings>
+void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, U64 stopAtIteration, std::chrono::steady_clock::time_point startTime) {
 	// 30 card perms. 47 perms with kings on their temple. times all combinations of zero to 2 pawns on each side
 	// constexpr U64 EXPECTED_WIN_IN_ZERO = 30 * 47 * (1 + 23 + 23*22/2 + 23 * (1 + 22 + 22*21/2) + 23*22/2 * (1 + 21 + 21*20/2));
 	constexpr U64 EXPECTED_RESOLVED_STATES = TB_MEN == 6 ? 1166580494ULL : 50958224689ULL;
@@ -368,7 +388,7 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, U64 stopAtIteration,
 	int numThreads = std::clamp<int>(static_cast<int>(std::thread::hardware_concurrency()), 1, 1024);
 	std::vector<std::thread> threads(numThreads);
 	for (int i = 0; i < numThreads; i++)
-		threads[i] = std::thread(singleThread<TB_MEN, Storage>, std::cref(cards), std::ref(tb), std::ref(chunkCounter), std::ref(comm));
+		threads[i] = std::thread(singleThread<TB_MEN, Storage, Landings>, std::cref(cards), std::ref(tb), std::ref(landings), std::ref(chunkCounter), std::ref(comm));
 	comm.sync.masterWait(numThreads);
 
 	std::chrono::duration<double> countingTime{};
@@ -388,8 +408,8 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, U64 stopAtIteration,
 			const U64 count = total - countUnresolved(tb);
 			newResolvedStates = count - resolvedStates;
 			resolvedStates = count;
-			if (iterationTime.count() > .02 || newResolvedStates == 0)
-				std::cout << std::format("it {:3}: {:12} ({:.4f}%) in {:.2f} seconds\n", comm.iteration, newResolvedStates, 100.0 * resolvedStates / total, iterationTime.count());
+			if (iterationTime.count() > .03 || newResolvedStates == 0)
+				std::cout << std::format("it {:3}: {:12} ({:.4f}%) in {:.2f}s\n", comm.iteration, newResolvedStates, 100.0 * resolvedStates / total, iterationTime.count());
 		} else
 			std::cout << "." << std::flush;
 
@@ -398,14 +418,17 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, U64 stopAtIteration,
 	}
 
 	const std::chrono::duration<double> totalTime = std::chrono::steady_clock::now() - startTime - countingTime;
-	std::cout << std::format("\ntotal {}-men: {} states in {:.2f} seconds (+{:.2f} seconds counting)\n", TB_MEN, resolvedStates, totalTime.count(), countingTime.count());
 
-	if constexpr (!VERBOSE)
+	if constexpr (!VERBOSE) {
+		const auto countingStart = std::chrono::steady_clock::now();
 		resolvedStates = total - countUnresolved(tb);
+		countingTime += std::chrono::steady_clock::now() - countingStart;
+	}
 	if (resolvedStates != EXPECTED_RESOLVED_STATES) {
 		std::cerr << "ERROR: WRONG NUMBER OF RESOLVED BOARDS (got " << resolvedStates << ", expected " << EXPECTED_RESOLVED_STATES << ")\n";
 		throw std::runtime_error("wrong number of boards");
 	}
+	std::cout << std::format("\ntotal {}-men: {} states in {:.2f}s (+{:.2f}s counting)\n", TB_MEN, resolvedStates, totalTime.count(), countingTime.count());
 
 	comm.iteration = 0;
 	comm.sync.masterNotify(numThreads);
@@ -433,24 +456,18 @@ struct TableBase {
 	template <U16 P0C, U16 P1C>
 	struct alignas(64) LandingsRow : std::array<std::array<U32, PAWNTABLE_P1<P1C, P0C>.size()>, PAWNTABLE_P0<P1C, P0C>.size()> {};
 
-	struct Storage {
+	// One tuple of ROW<P0C, P1C> per piece count, in huge pages. Left uninitialized: the first passes write every entry.
+	template <template <U16, U16> typename ROW>
+	struct RowTuple {
 		template <std::size_t... I>
-		static auto _Storage(std::index_sequence<I...>) -> std::tuple<Row<PIECE_COUNTS<TB_MEN>[I].p0c, PIECE_COUNTS<TB_MEN>[I].p1c>...>;
-		template <std::size_t... I>
-		static auto _Landings(std::index_sequence<I...>) -> std::tuple<LandingsRow<PIECE_COUNTS<TB_MEN>[I].p0c, PIECE_COUNTS<TB_MEN>[I].p1c>...>;
-		union { // In a union so the tuple's value-initialization doesn't zero the whole table before the fill.
-			decltype(_Storage(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{})) rows;
-		};
-		union {
-			decltype(_Landings(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{})) landings;
+		static auto _Rows(std::index_sequence<I...>) -> std::tuple<ROW<PIECE_COUNTS<TB_MEN>[I].p0c, PIECE_COUNTS<TB_MEN>[I].p1c>...>;
+		union { // In a union so the tuple's value-initialization doesn't zero the whole table.
+			decltype(_Rows(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{})) rows;
 		};
 
-		Storage() {
-			std::fill_n(reinterpret_cast<U32*>(&rows), sizeof(rows) / sizeof(U32), CARD_PERMS_MASK);
-			std::fill_n(reinterpret_cast<U32*>(&landings), sizeof(landings) / sizeof(U32), (1U << 25) - 1);
-		}
+		RowTuple() {}
 
-		// madvise has to happen before the first touch, which is the fill in the constructor.
+		// madvise has to happen before the first touch, which is the first pass of the build.
 		static void* operator new(std::size_t size) {
 			constexpr std::size_t HUGE_PAGE = 2 << 20;
 			const std::size_t rounded = (size + HUGE_PAGE - 1) / HUGE_PAGE * HUGE_PAGE;
@@ -473,20 +490,19 @@ struct TableBase {
 		auto& getRow(this auto& self) {
 			return std::get<rowIndex<TB_MEN>(P0C, P1C)>(self.rows);
 		}
-
-		template <U16 P0C, U16 P1C>
-		auto& getLandings(this auto& self) {
-			return std::get<rowIndex<TB_MEN>(P0C, P1C)>(self.landings);
-		}
 	};
+
+	using Storage = RowTuple<Row>;
+	using Landings = RowTuple<LandingsRow>; // only needed during the build
 
 	explicit TableBase(const CardsInfo& cards, U64 stopAtIteration = std::numeric_limits<U64>::max()) {
 		const auto allocStart = std::chrono::steady_clock::now();
 		tb = std::make_unique<Storage>();
+		auto landings = std::make_unique<Landings>();
 		const std::chrono::duration<double> allocTime = std::chrono::steady_clock::now() - allocStart;
-		std::cout << std::format("allocated {:.1f}GB in {:.2f} seconds\n", sizeof(Storage) / 1e9, allocTime.count());
+		std::cout << std::format("allocated {:.1f}GB + {:.1f}GB in {:.2f} seconds\n", sizeof(Storage) / 1e9, sizeof(Landings) / 1e9, allocTime.count());
 
-		runTableBaseBuild<TB_MEN>(cards, *tb, stopAtIteration, allocStart);
+		runTableBaseBuild<TB_MEN>(cards, *tb, *landings, stopAtIteration, allocStart);
 	}
 
 	std::unique_ptr<Storage> tb;
