@@ -23,33 +23,35 @@ constexpr bool VERBOSE = true;
 template <U16 TB_MEN, U32 ROW, int STEP>
 void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk, std::atomic<U64>& chunkCounter, bool& updated) {
 	auto& row = std::get<ROW>(tb);
-	constexpr U64 P0_CHUNKS = (row.size() - 1) / CHUNK_P0_POSITIONS + 1;
 
 	constexpr auto PC = PIECE_COUNTS<TB_MEN>[ROW];
 	constexpr int MIRROR_ROW = rowIndex<TB_MEN>(PC.p1c, PC.p0c);
 	constexpr int P0_TAKEN_ROW = rowIndex<TB_MEN>(PC.p1c - 1, PC.p0c);
 	constexpr int P1_UNTAKEN_ROW = rowIndex<TB_MEN>(PC.p1c, PC.p0c + 1);
 
+	// Iterate in MIRROR_ROW order: the outer loop fixes p1's pieces, so all non-take children share MIRROR_ROW[ip0_new].
+	constexpr U32 OUTER_SIZE = PAWNTABLE_P0<TB_MEN, MIRROR_ROW>.size();
+	constexpr U32 INNER_SIZE = PAWNTABLE_P1<TB_MEN, MIRROR_ROW>.size();
+	constexpr U64 P0_CHUNKS = (OUTER_SIZE - 1) / CHUNK_P0_POSITIONS + 1;
+
 	for (; chunk < rowStartChunk + P0_CHUNKS; chunk = chunkCounter++) {
 		const U32 begin = static_cast<U32>((chunk - rowStartChunk) * CHUNK_P0_POSITIONS);
-		const U32 end = std::min<U32>(begin + CHUNK_P0_POSITIONS, static_cast<U32>(row.size()));
-		auto* it = &row[begin][0][0][0];
-		for (int ip0 = begin; ip0 < end; ip0++) {
-			auto& rowP0 = row[ip0];
-			const U32 bbp0 = unrankFirstPieces<TB_MEN, ROW, false>(ip0);
-			for (int ip1 = 0; ip1 < static_cast<int>(rowP0.size()); ip1++, it += PC.p0c * PC.p1c) {
-				auto& rowP1 = rowP0[ip1];
-				const U32 bbp1 = unrankSecondPieces<TB_MEN, ROW, false>(ip1, bbp0);
-				const int ip0_new = rankFirstPieces<TB_MEN, MIRROR_ROW, true>(bbp1);
-				std::array<int, PC.p1c> ip0s_taken; // precalculate all the ranks for different taken pieces
-				if constexpr (PC.p1c > 1) {
-					U32 bbp1_source = bbp1;
-					for (int i = 0; i < PC.p1c; i++) {
-						const U32 pp1 = bbp1_source & -bbp1_source;
-						bbp1_source &= bbp1_source - 1;
-						ip0s_taken[i] = rankFirstPieces<TB_MEN, P0_TAKEN_ROW, true>(bbp1 - pp1);
-					}
+		const U32 end = std::min<U32>(begin + CHUNK_P0_POSITIONS, OUTER_SIZE);
+		for (int ip0_new = begin; ip0_new < end; ip0_new++) { // loop over the outer table in an order that maximizes locality for forward move generation
+			const U32 bbp1 = unrankFirstPieces<TB_MEN, MIRROR_ROW, true>(ip0_new);
+			std::array<int, PC.p1c> ip0s_taken; // precalculate all the ranks for different taken pieces
+			if constexpr (PC.p1c > 1) {
+				U32 bbp1_source = bbp1;
+				for (int i = 0; i < PC.p1c; i++) {
+					const U32 pp1 = bbp1_source & -bbp1_source;
+					bbp1_source &= bbp1_source - 1;
+					ip0s_taken[i] = rankFirstPieces<TB_MEN, P0_TAKEN_ROW, true>(bbp1 - pp1);
 				}
+			}
+			for (int ipInner = 0; ipInner < static_cast<int>(INNER_SIZE); ipInner++) {
+				const U32 bbp0 = unrankSecondPieces<TB_MEN, MIRROR_ROW, true>(ipInner, bbp1);
+				auto& rowP1 = row[rankFirstPieces<TB_MEN, ROW, false>(bbp0)][rankSecondPieces<TB_MEN, ROW, false>(bbp1, bbp0)];
+				auto* it = &rowP1[0][0];
 				{ // Optimization: If the entire block of king perms is empty, continue early
 					auto* entryIt = it;
 					bool blockHasUnresolved = false; // STEP 1 has to initialize every entry of the block before jumping
@@ -132,8 +134,8 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 								auto otherIt = otherEntry.begin();
 								if (!isTakeMove) {
 									const int ip1_new = rankSecondPieces<TB_MEN, MIRROR_ROW, true>(bbp0_new, bbp1);
-									const auto& pownRow_new = std::get<MIRROR_ROW>(tb)[ip0_new][ip1_new];
-									__builtin_prefetch(pownRow_new.data(), 0, 0);
+									const auto& pawnRow_new = std::get<MIRROR_ROW>(tb)[ip0_new][ip1_new];
+									__builtin_prefetch(pawnRow_new.data(), 0, 0);
 
 									for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 										auto& rowK0 = rowP1[ik0];
@@ -142,7 +144,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 										const U32 ik1_new = rankSecondKing<TB_MEN, MIRROR_ROW, true>(bbk0_new, bbp0_new);
 										for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, otherIt++) {
 											const U32 ik0_new = PC.p1c - 1 - ik1; // invert board
-											*otherIt = pownRow_new[ik0_new][ik1_new].load(std::memory_order_acquire);
+											*otherIt = pawnRow_new[ik0_new][ik1_new].load(std::memory_order_acquire);
 										}
 									}
 
