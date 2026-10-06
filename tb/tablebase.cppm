@@ -129,6 +129,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 								}
 							} else {
 								const bool isTakeMove = landPiece & bbp1;
+								const int landRankInv = std::popcount(bbp0_without_source & -landPiece);
 								std::array<U32, P0C * P1C> otherEntry; // unresolved bits of the child
 								auto otherIt = otherEntry.begin();
 								if (!isTakeMove) {
@@ -139,10 +140,10 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 									for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 										auto& rowK0 = rowP1[ik0];
 										const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
-										const U32 bbk0_new = sourcePiece == bbk0 ? landPiece : bbk0;
-										const U32 ik1_new = rankSecondKing<true, P1C, P0C>(bbk0_new, bbp0_new);
+										// the moving piece shifts the inverted king up if it jumps over it from below, down if from above
+										const U32 ik1_new = sourcePiece == bbk0 ? landRankInv : invertKingRank<P0C>(ik0) + (sourcePiece < bbk0) - (landPiece < bbk0);
 										for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, otherIt++) {
-											const U32 ik0_new = P1C - 1 - ik1; // invert board
+											const U32 ik0_new = invertKingRank<P1C>(ik1);
 											*otherIt = pawnRow_new[ik0_new][ik1_new].load(std::memory_order_acquire);
 										}
 									}
@@ -152,7 +153,8 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 										std::unreachable();
 									} else {
 										const U32 bbp1_taken = bbp1 & ~landPiece;
-										const int ip0_taken = ip0s_taken[std::popcount(bbp1 & (landPiece - 1))];
+										const int iTaken = std::popcount(bbp1 & (landPiece - 1));
+										const int ip0_taken = ip0s_taken[iTaken];
 										const int ip1_taken = rankSecondPieces<true, P1C - 1, P0C>(bbp0_new, bbp1_taken);
 										const auto& pawnrow_taken = tb.template getRow<P1C - 1, P0C>()[ip0_taken][ip1_taken];
 										__builtin_prefetch(pawnrow_taken.data(), 0, 0);
@@ -160,15 +162,14 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 										for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 											auto& rowK0 = rowP1[ik0];
 											const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
-											const U32 bbk0_new = sourcePiece == bbk0 ? landPiece : bbk0;
-											const U32 ik1_taken = rankSecondKing<true, P1C - 1, P0C>(bbk0_new, bbp0_new);
+											// the moving piece shifts the inverted king up if it jumps over it from below, down if from above
+											const U32 ik1_taken = sourcePiece == bbk0 ? landRankInv : invertKingRank<P0C>(ik0) + (sourcePiece < bbk0) - (landPiece < bbk0);
 											for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, otherIt++) {
-												const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
-												if (landPiece == bbk1) { // King takes are obviously resolved
+												if (ik1 == iTaken) { // King takes are obviously resolved
 													*otherIt = 0;
 													continue;
 												}
-												const U32 ik0_taken = P1C - 1 - ik1 - (landPiece > bbk1); // invert board, the taken piece shifts the king down if above it
+												const U32 ik0_taken = invertKingRank<P1C>(ik1) - (ik1 < iTaken); // the taken piece shifts the king down if above it
 												*otherIt = pawnrow_taken[ik0_taken][ik1_taken].load(std::memory_order_acquire);
 											}
 										}
@@ -209,6 +210,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 							const U32 landPiece = landPieces & -landPieces;
 							landPieces &= landPieces - 1;
 							const U32 bbp1_new = bbp1_without_source | landPiece;
+							const int landRankInv = std::popcount(bbp1_without_source & -landPiece);
 
 							const int ip0_new = rankFirstPieces<true, P1C, P0C>(bbp1_new);
 							const int ip1_new = rankSecondPieces<true, P1C, P0C>(bbp0, bbp1_new); // TODO incremental?
@@ -234,15 +236,14 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 								U32 bbk0;
 								if constexpr (P0C < TB_MEN / 2)
 									bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
-								const U32 ik1_new = P0C - 1 - ik0; // invert board
+								const U32 ik1_new = invertKingRank<P0C>(ik0);
 								for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, lostIt++) {
 									const U32 lostBits = *lostIt & sideCards;
 									if (!lostBits)
 										continue;
 									const U32 newEntryBits = unmoveCardEntry(lostBits);
-									const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
-									const U32 bbk1_new = sourcePiece == bbk1 ? landPiece : bbk1;
-									const U32 ik0_new = rankFirstKing<true, P1C, P0C>(bbk1_new, bbp1_new);
+									const int ik1_inv = invertKingRank<P1C>(ik1) + (iSrc < ik1); // the source piece leaving from below shifts the inverted king up
+									const U32 ik0_new = iSrc == ik1 ? landRankInv : ik1_inv - (landRankInv >= ik1_inv); // landing below the king shifts it down
 									pawnRow_new[ik0_new][ik1_new].fetch_and(~newEntryBits, std::memory_order_relaxed);
 
 									if constexpr (P0C < TB_MEN / 2) {

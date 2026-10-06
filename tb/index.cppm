@@ -147,6 +147,12 @@ __FORCE_INLINE int rankKings(U32 bbk, U32 bbp) {
 		return std::popcount(-(bbk << 1) & bbp);
 }
 
+// The same king index as seen from the other player, for a side with PC pieces.
+export template <U16 PC>
+__FORCE_INLINE int invertKingRank(int ik) {
+	return PC - 1 - ik;
+}
+
 export template <bool invert, U16 P0C, U16 P1C>
 __FORCE_INLINE int rankFirstKing(U32 bbk, U32 bbp) {
 	return rankKings<invert, P0C, P1C>(bbk, bbp);
