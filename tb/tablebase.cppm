@@ -433,13 +433,13 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, 
 		resolvedStates = total - countUnresolved(tb);
 		countingTime += std::chrono::steady_clock::now() - countingStart;
 	}
+	if constexpr (VERBOSE)
+		std::cout << "\n";
+	std::cout << std::format("total {}-men: {} states in {:.2f}s (+{:.2f}s counting)\n", TB_MEN, resolvedStates, totalTime.count(), countingTime.count());
 	if (resolvedStates != EXPECTED_RESOLVED_STATES) {
 		std::cerr << "ERROR: WRONG NUMBER OF RESOLVED BOARDS (got " << resolvedStates << ", expected " << EXPECTED_RESOLVED_STATES << ")\n";
 		throw std::runtime_error("wrong number of boards");
 	}
-	if constexpr (VERBOSE)
-		std::cout << "\n";
-	std::cout << std::format("total {}-men: {} states in {:.2f}s (+{:.2f}s counting)\n", TB_MEN, resolvedStates, totalTime.count(), countingTime.count());
 
 	comm.iteration = 0;
 	comm.sync.masterNotify(numThreads);
