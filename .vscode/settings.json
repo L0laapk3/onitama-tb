@@ -1,4 +1,5 @@
 {
+	"clangd.path": "${workspaceFolder}/.vscode/clangd.sh",
 	"clangd.arguments": [
 		"--experimental-modules-support"
 	],
