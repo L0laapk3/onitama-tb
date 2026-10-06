@@ -259,7 +259,7 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 							auto& entry = *entriesToUpdateIt++;
 							entry.iUntaken = iUntaken;
 							for (int i = 0; i < P0C * P1C; i++)
-								entry.newEntryBits[i] = unmoveCardEntry(newLostEntries[i] & sideCards);
+								entry.newEntryBits[i] = newLostEntries[i] ? unmoveCardEntry(newLostEntries[i] & sideCards) : 0;
 							for (int ik1 = 0; ik1 < P1C; ik1++) {
 								const int ik1_inv = invertKingRank<P1C>(ik1) + (iSrc < ik1); // the source piece leaving from below shifts the inverted king up
 								entry.ik0News[ik1] = iSrc == ik1 ? landRankInv : ik1_inv - (landRankInv >= ik1_inv); // landing below the king shifts it down
