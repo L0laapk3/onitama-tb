@@ -16,11 +16,12 @@ struct TableBase;
 struct ThreadObj {
 	Sync sync;
 	U64 iteration = 1;
+	std::size_t group = 0; // index into PIECE_COUNT_ORDER
 	std::atomic<bool> updated = true;
 };
 
 constexpr U64 CHUNK_P0_POSITIONS = 1;
-constexpr bool VERBOSE = true;
+constexpr bool VERBOSE = false;
 
 __FORCE_INLINE U32 fetch_mask(std::atomic<U32>& entry, U32 mask, std::memory_order order) {
 	auto value = entry.load(std::memory_order_relaxed);
@@ -297,13 +298,19 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 }
 
 template <U16 TB_MEN, int STEP, typename Storage, typename Landings>
-void singleDepthPass(const CardsInfo& cards, Storage& tb, Landings& landings, std::atomic<U64>& chunkCounter, bool& updated) {
+void singleDepthPass(const CardsInfo& cards, Storage& tb, Landings& landings, std::size_t group, std::atomic<U64>& chunkCounter, bool& updated) {
 	U64 chunk = chunkCounter++;
 	U64 rowStartChunk = 0;
 
-	tb.forEachRow([&]<U16 P0C, U16 P1C> {
-		processRow<TB_MEN, P0C, P1C, STEP>(cards, tb, landings, chunk, rowStartChunk, chunkCounter, updated);
-	});
+	[&]<std::size_t... I>(std::index_sequence<I...>) {
+		([&]<U16 P0C, U16 P1C> {
+			if (I != group)
+				return;
+			processRow<TB_MEN, P0C, P1C, STEP>(cards, tb, landings, chunk, rowStartChunk, chunkCounter, updated);
+			if constexpr (P0C != P1C)
+				processRow<TB_MEN, P1C, P0C, STEP>(cards, tb, landings, chunk, rowStartChunk, chunkCounter, updated);
+		}.template operator()<PIECE_COUNT_ORDER<TB_MEN>[I].p0c, PIECE_COUNT_ORDER<TB_MEN>[I].p1c>(), ...);
+	}(std::make_index_sequence<PIECE_COUNT_ORDER<TB_MEN>.size()>{});
 }
 
 template <typename Storage>
@@ -356,9 +363,9 @@ void singleThread(const CardsInfo& cards, Storage& tb, Landings& landings, std::
 
 		bool updated = false;
 		if (comm.iteration == 1)
-			singleDepthPass<TB_MEN, 1>(cards, tb, landings, chunkCounter, updated);
+			singleDepthPass<TB_MEN, 1>(cards, tb, landings, comm.group, chunkCounter, updated);
 		else
-			singleDepthPass<TB_MEN, 2>(cards, tb, landings, chunkCounter, updated);
+			singleDepthPass<TB_MEN, 2>(cards, tb, landings, comm.group, chunkCounter, updated);
 		if (updated)
 			comm.updated.store(true, std::memory_order_relaxed);
 	}
@@ -382,26 +389,41 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, 
 	U64 resolvedStates = 0;
 	U64 newResolvedStates = 1;
 	constexpr U64 total = countTotal<TB_MEN>();
-	while (comm.updated && comm.iteration <= stopAtIteration) {
-		chunkCounter = 0;
-		comm.updated = false;
-		const auto iterationStart = std::chrono::steady_clock::now();
-		comm.sync.masterNotify(numThreads);
-		comm.sync.masterWait(numThreads);
-		const auto countingStart = std::chrono::steady_clock::now();
-		const std::chrono::duration<double> iterationTime = countingStart - iterationStart;
+	// Takes only lead to groups earlier in PIECE_COUNT_ORDER, so each group is solved completely before the next one.
+	for (std::size_t group = 0; group < PIECE_COUNT_ORDER<TB_MEN>.size(); group++) {
+		comm.group = group;
+		comm.iteration = 1;
+		comm.updated = true;
+		std::cout << std::format("{}v{}", PIECE_COUNT_ORDER<TB_MEN>[group].p0c, PIECE_COUNT_ORDER<TB_MEN>[group].p1c);
+		if constexpr (VERBOSE)
+			std::cout << ":\n";
+		else
+			std::cout << std::flush;
+		std::chrono::duration<double> groupTime{};
+		while (comm.updated && comm.iteration <= stopAtIteration) {
+			chunkCounter = 0;
+			comm.updated = false;
+			const auto iterationStart = std::chrono::steady_clock::now();
+			comm.sync.masterNotify(numThreads);
+			comm.sync.masterWait(numThreads);
+			const auto countingStart = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> iterationTime = countingStart - iterationStart;
+			groupTime += iterationTime;
 
-		if constexpr (VERBOSE) {
-			const U64 count = total - countUnresolved(tb);
-			newResolvedStates = count - resolvedStates;
-			resolvedStates = count;
-			if (iterationTime.count() > .03 || newResolvedStates == 0)
-				std::cout << std::format("it {:3}: {:12} ({:.4f}%) in {:.2f}s\n", comm.iteration, newResolvedStates, 100.0 * resolvedStates / total, iterationTime.count());
-		} else
-			std::cout << "." << std::flush;
+			if constexpr (VERBOSE) {
+				const U64 count = total - countUnresolved(tb);
+				newResolvedStates = count - resolvedStates;
+				resolvedStates = count;
+				if (iterationTime.count() > .03 || newResolvedStates == 0)
+					std::cout << std::format("it {:3}: {:12} ({:.4f}%) in {:.2f}s\n", comm.iteration, newResolvedStates, 100.0 * resolvedStates / total, iterationTime.count());
+			} else
+				std::cout << "." << std::flush;
 
-		countingTime += std::chrono::steady_clock::now() - countingStart;
-		comm.iteration++;
+			countingTime += std::chrono::steady_clock::now() - countingStart;
+			comm.iteration++;
+		}
+		if constexpr (!VERBOSE)
+			std::cout << std::format(" {:.2f}s\n", groupTime.count());
 	}
 
 	const std::chrono::duration<double> totalTime = std::chrono::steady_clock::now() - startTime - countingTime;
@@ -415,7 +437,9 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, 
 		std::cerr << "ERROR: WRONG NUMBER OF RESOLVED BOARDS (got " << resolvedStates << ", expected " << EXPECTED_RESOLVED_STATES << ")\n";
 		throw std::runtime_error("wrong number of boards");
 	}
-	std::cout << std::format("\ntotal {}-men: {} states in {:.2f}s (+{:.2f}s counting)\n", TB_MEN, resolvedStates, totalTime.count(), countingTime.count());
+	if constexpr (VERBOSE)
+		std::cout << "\n";
+	std::cout << std::format("total {}-men: {} states in {:.2f}s (+{:.2f}s counting)\n", TB_MEN, resolvedStates, totalTime.count(), countingTime.count());
 
 	comm.iteration = 0;
 	comm.sync.masterNotify(numThreads);
@@ -447,9 +471,9 @@ struct TableBase {
 	template <template <U16, U16> typename ROW>
 	struct RowTuple {
 		template <std::size_t... I>
-		static auto _Rows(std::index_sequence<I...>) -> std::tuple<ROW<PIECE_COUNTS<TB_MEN>[I].p0c, PIECE_COUNTS<TB_MEN>[I].p1c>...>;
+		static auto _Rows(std::index_sequence<I...>) -> std::tuple<ROW<ROW_ORDER<TB_MEN>[I].p0c, ROW_ORDER<TB_MEN>[I].p1c>...>;
 		union { // In a union so the tuple's value-initialization doesn't zero the whole table.
-			decltype(_Rows(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{})) rows;
+			decltype(_Rows(std::make_index_sequence<ROW_ORDER<TB_MEN>.size()>{})) rows;
 		};
 
 		RowTuple() {}
@@ -472,8 +496,8 @@ struct TableBase {
 
 		static constexpr void forEachRow(auto&& f) {
 			[&]<std::size_t... I>(std::index_sequence<I...>) {
-				(f.template operator()<PIECE_COUNTS<TB_MEN>[I].p0c, PIECE_COUNTS<TB_MEN>[I].p1c>(), ...);
-			}(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{});
+				(f.template operator()<ROW_ORDER<TB_MEN>[I].p0c, ROW_ORDER<TB_MEN>[I].p1c>(), ...);
+			}(std::make_index_sequence<ROW_ORDER<TB_MEN>.size()>{});
 		}
 
 		template <U16 P0C, U16 P1C>

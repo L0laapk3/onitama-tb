@@ -14,24 +14,34 @@ export struct PieceCount {
 };
 
 export template <U16 TB_MEN>
-constexpr auto PIECE_COUNTS = [] {
+constexpr auto PIECE_COUNT_ORDER = [] {
+	constexpr int MAX_PC = TB_MEN / 2;
+	std::array<PieceCount, MAX_PC * (MAX_PC + 1) / 2> a;
+	std::size_t index = 0;
+	for (int sum = 2; sum <= 2 * MAX_PC; sum++)
+		for (int p0c = std::max(1, sum - MAX_PC); p0c <= sum / 2; p0c++)
+			a[index++] = {static_cast<U16>(p0c), static_cast<U16>(sum - p0c)};
+	return a;
+}();
+
+// The stored rows: both orientations of every piece count.
+export template <U16 TB_MEN>
+constexpr auto ROW_ORDER = [] {
 	std::array<PieceCount, TB_MEN / 2 * TB_MEN / 2> a;
-	int index = a.size();
-	for (int i = TB_MEN - 1; i-- > 0;)
-		for (int j = i % 2; j <= TB_MEN; j += 2)
-			for (int k = -1; k <= (j == 0 ? 0 : 1); k += 2)
-				if (i - j >= 0 && i + j <= TB_MEN - 2) {
-					int p0c = (i - k * j) / 2, p1c = (i + k * j) / 2;
-					a[--index] = {static_cast<U16>(p0c + 1), static_cast<U16>(p1c + 1)};
-				}
+	std::size_t index = 0;
+	for (const auto [p0c, p1c] : PIECE_COUNT_ORDER<TB_MEN>) {
+		a[index++] = {p0c, p1c};
+		if (p0c != p1c)
+			a[index++] = {p1c, p0c};
+	}
 	return a;
 }();
 
 // Row with the given piece counts, -1 if it is not part of the table.
 export template <U16 TB_MEN>
 constexpr int rowIndex(int p0c, int p1c) {
-	for (int i = 0; i < static_cast<int>(PIECE_COUNTS<TB_MEN>.size()); i++)
-		if (PIECE_COUNTS<TB_MEN>[i].p0c == p0c && PIECE_COUNTS<TB_MEN>[i].p1c == p1c)
+	for (int i = 0; i < static_cast<int>(ROW_ORDER<TB_MEN>.size()); i++)
+		if (ROW_ORDER<TB_MEN>[i].p0c == p0c && ROW_ORDER<TB_MEN>[i].p1c == p1c)
 			return i;
 	return -1;
 }
