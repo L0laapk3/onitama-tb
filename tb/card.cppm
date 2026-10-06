@@ -34,36 +34,36 @@ export struct CardPermutation {
 // the mover's hand, k picks which of the 3 remaining cards is the side card. So rotating by 10 or 20 changes
 // only the side card, and swapping the hands is a permutation within each group of 6 bits (swapPlayers).
 export constexpr std::array<CardPermutation, 30> CARDS_PERMUTATIONS = {{
-	{ 2, 3, 1, 4, 0 },
-	{ 2, 4, 1, 3, 0 },
-	{ 0, 4, 1, 2, 3 },
-	{ 1, 4, 2, 3, 0 },
-	{ 1, 2, 0, 4, 3 },
-	{ 1, 3, 2, 4, 0 },
-	{ 3, 4, 0, 2, 1 },
-	{ 0, 3, 2, 4, 1 },
-	{ 0, 1, 2, 3, 4 },
-	{ 0, 2, 3, 4, 1 },
-	{ 2, 3, 0, 1, 4 },
-	{ 2, 4, 0, 3, 1 },
-	{ 0, 4, 1, 3, 2 },
-	{ 1, 4, 0, 3, 2 },
-	{ 1, 2, 3, 4, 0 },
-	{ 1, 3, 0, 4, 2 },
-	{ 3, 4, 1, 2, 0 },
-	{ 0, 3, 1, 4, 2 },
-	{ 0, 1, 2, 4, 3 },
-	{ 0, 2, 1, 4, 3 },
-	{ 2, 3, 0, 4, 1 },
-	{ 2, 4, 0, 1, 3 },
-	{ 0, 4, 2, 3, 1 },
-	{ 1, 4, 0, 2, 3 },
-	{ 1, 2, 0, 3, 4 },
-	{ 1, 3, 0, 2, 4 },
-	{ 3, 4, 0, 1, 2 },
-	{ 0, 3, 1, 2, 4 },
-	{ 0, 1, 3, 4, 2 },
-	{ 0, 2, 1, 3, 4 },
+    { 2, 3, 1, 4, 0 },
+    { 2, 4, 1, 3, 0 },
+    { 0, 4, 1, 2, 3 },
+    { 1, 4, 2, 3, 0 },
+    { 1, 2, 0, 4, 3 },
+    { 1, 3, 2, 4, 0 },
+    { 3, 4, 0, 2, 1 },
+    { 0, 3, 2, 4, 1 },
+    { 0, 1, 2, 3, 4 },
+    { 0, 2, 3, 4, 1 },
+    { 2, 3, 0, 1, 4 },
+    { 2, 4, 0, 3, 1 },
+    { 0, 4, 1, 3, 2 },
+    { 1, 4, 0, 3, 2 },
+    { 1, 2, 3, 4, 0 },
+    { 1, 3, 0, 4, 2 },
+    { 3, 4, 1, 2, 0 },
+    { 0, 3, 1, 4, 2 },
+    { 0, 1, 2, 4, 3 },
+    { 0, 2, 1, 4, 3 },
+    { 2, 3, 0, 4, 1 },
+    { 2, 4, 0, 1, 3 },
+    { 0, 4, 2, 3, 1 },
+    { 1, 4, 0, 2, 3 },
+    { 1, 2, 0, 3, 4 },
+    { 1, 3, 0, 2, 4 },
+    { 3, 4, 0, 1, 2 },
+    { 0, 3, 1, 2, 4 },
+    { 0, 1, 3, 4, 2 },
+    { 0, 2, 1, 3, 4 },
 }};
 
 constexpr U8 findCardPermutation(std::array<U8, 2> hand0, std::array<U8, 2> hand1, U8 side) {
@@ -157,6 +157,13 @@ export __FORCE_INLINE constexpr U32 moveCardEntry(U32 after) {
 	// return swapPlayers(otherSideCards(after));
 	return after; // TODO
 }
+
+// TODO
+// export __FORCE_INLINE constexpr U32 unmoveCardEntry(U32 after) {
+// 	U32 card1 = (after << 20) | (after >> 10);
+// 	U32 card2 = (after << 10) | (after >> 20);
+// 	return (card1 | card2) & CARD_PERMS_MASK;
+// }
 
 static_assert([] {
 	for (U8 p = 0; p < CARDS_PERMUTATIONS.size(); p++) {

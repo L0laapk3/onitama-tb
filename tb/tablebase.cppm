@@ -229,6 +229,15 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 					continue;
 
 				{ // reverse movegen - all entries that can reach this entry are also marked as resolved.
+					struct EntryToUpdate {
+						std::atomic<U32>* pawnRow_new; // flat [ik0][ik1] king block of <P1C, P0C>
+						[[no_unique_address]] std::conditional_t<P0C < TB_MEN / 2, std::atomic<U32>*, std::monostate> pawnRow_untaken; // flat king block of <P1C, P0C + 1>
+						std::array<U32, P0C * P1C> newEntryBits; // per [ik0][ik1] of this entry, 0 = nothing to mark
+						std::array<U8, P1C> ik0News; // per ik1
+						int iUntaken;
+					};
+					std::array<EntryToUpdate, P1C * std::min(20, 25 - P0C - P1C)> entriesToUpdate;
+					auto entriesToUpdateIt = entriesToUpdate.begin();
 					const U32 usedCards = usedCardsOfEntry(lostUnion);
 					U32 sourcePieces = bbp1;
 					for (int iSrc = 0; iSrc < P1C; iSrc++) {
@@ -241,44 +250,50 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 						while (landPieces) {
 							const U32 landPiece = landPieces & -landPieces;
 							landPieces &= landPieces - 1;
+							const U32 sideCards = cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)];
+							if (!(lostUnion & sideCards))
+								continue;
 							const U32 bbp1_new = bbp1_without_source | landPiece;
 							const int landRankInv = std::popcount(bbp1_without_source & -landPiece);
 
+							auto& entry = *entriesToUpdateIt++;
+							entry.iUntaken = iUntaken;
+							for (int i = 0; i < P0C * P1C; i++)
+								entry.newEntryBits[i] = unmoveCardEntry(newLostEntries[i] & sideCards);
+							for (int ik1 = 0; ik1 < P1C; ik1++) {
+								const int ik1_inv = invertKingRank<P1C>(ik1) + (iSrc < ik1); // the source piece leaving from below shifts the inverted king up
+								entry.ik0News[ik1] = iSrc == ik1 ? landRankInv : ik1_inv - (landRankInv >= ik1_inv); // landing below the king shifts it down
+							}
+
 							const int ip0_new = rankFirstPieces<true, P1C, P0C>(bbp1_new);
 							const int ip1_new = rankSecondPieces<true, P1C, P0C>(bbp0, bbp1_new); // TODO incremental?
-							auto& pawnRow_new = tb.template getRow<P1C, P0C>()[ip0_new][ip1_new];
-							__builtin_prefetch(pawnRow_new.data(), 0, 0);
+							entry.pawnRow_new = &tb.template getRow<P1C, P0C>()[ip0_new][ip1_new][0][0];
+							__builtin_prefetch(entry.pawnRow_new, 0, 0);
+							if constexpr (P0C < TB_MEN / 2) {
+								const U32 bbp0_untaken = bbp0 | sourcePiece;
+								const int ip0_untaken = rankFirstPieces<true, P1C, P0C + 1>(bbp1_new);
+								const int ip1_untaken = rankSecondPieces<true, P1C, P0C + 1>(bbp0_untaken, bbp1_new); // TODO incremental?
+								entry.pawnRow_untaken = &tb.template getRow<P1C, P0C + 1>()[ip0_untaken][ip1_untaken][0][0];
+								__builtin_prefetch(entry.pawnRow_untaken, 0, 0);
+							}
+						}
+					}
 
-							auto& pawnRow_untaken = [&] -> auto& { // the <P1C, P0C + 1> row does not exist for the other rows
+					for (auto entryIt = entriesToUpdate.begin(); entryIt != entriesToUpdateIt; entryIt++) {
+						const auto& [pawnRow_new, pawnRow_untaken, newEntryBitsArr, ik0News, iUntaken] = *entryIt;
+						auto bitsIt = newEntryBitsArr.begin();
+						for (int ik0 = 0; ik0 < P0C; ik0++) {
+							const U32 ik1_new = invertKingRank<P0C>(ik0);
+							for (int ik1 = 0; ik1 < P1C; ik1++, bitsIt++) {
+								const U32 newEntryBits = *bitsIt;
+								if (!newEntryBits)
+									continue;
+								const U32 ik0_new = ik0News[ik1];
+								fetch_mask(pawnRow_new[ik0_new * P0C + ik1_new], newEntryBits, std::memory_order_relaxed);
+
 								if constexpr (P0C < TB_MEN / 2) {
-									const U32 bbp0_untaken = bbp0 | sourcePiece;
-									const int ip0_untaken = rankFirstPieces<true, P1C, P0C + 1>(bbp1_new);
-									const int ip1_untaken = rankSecondPieces<true, P1C, P0C + 1>(bbp0_untaken, bbp1_new); // TODO incremental?
-									auto& pawnRow_untaken = tb.template getRow<P1C, P0C + 1>()[ip0_untaken][ip1_untaken];
-									__builtin_prefetch(pawnRow_untaken.data(), 0, 0);
-									return pawnRow_untaken;
-								} else
-									return pawnRow_new;
-							}();
-
-							const U32 sideCards = cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)];
-							auto lostIt = newLostEntries.begin();
-							for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
-								auto& rowK0 = rowP1[ik0];
-								const U32 ik1_new = invertKingRank<P0C>(ik0);
-								for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, lostIt++) {
-									const U32 lostBits = *lostIt & sideCards;
-									if (!lostBits)
-										continue;
-									const U32 newEntryBits = unmoveCardEntry(lostBits);
-									const int ik1_inv = invertKingRank<P1C>(ik1) + (iSrc < ik1); // the source piece leaving from below shifts the inverted king up
-									const U32 ik0_new = iSrc == ik1 ? landRankInv : ik1_inv - (landRankInv >= ik1_inv); // landing below the king shifts it down
-									fetch_mask(pawnRow_new[ik0_new][ik1_new], newEntryBits, std::memory_order_relaxed);
-
-									if constexpr (P0C < TB_MEN / 2) {
-										const int ik1_untaken = ik1_new + (ik0 < iUntaken); // the untaken piece shifts the king up if above it
-										fetch_mask(pawnRow_untaken[ik0_new][ik1_untaken], newEntryBits, std::memory_order_relaxed);
-									}
+									const int ik1_untaken = ik1_new + (ik0 < iUntaken); // the untaken piece shifts the king up if above it
+									fetch_mask(pawnRow_untaken[ik0_new * (P0C + 1) + ik1_untaken], newEntryBits, std::memory_order_relaxed);
 								}
 							}
 						}
