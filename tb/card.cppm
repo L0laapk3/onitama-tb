@@ -183,8 +183,32 @@ export __FORCE_INLINE constexpr U32 usedCardsOfEntry(U32 cardEntry) {
 	return cards;
 }
 
+export constexpr U32 ALL_CARDS_MASK = 31;
+
+// Bit i: card i is in the mover's hand in at least one of these permutations, i.e. it can be used to move.
+export __FORCE_INLINE constexpr U32 handCardsOfEntry(U32 cardEntry) {
+	U32 cards = 0;
+	for (int i = 0; i < 5; i++)
+		cards |= U32((cardEntry & P_HAS_CARD_IN_MASK<0>[i]) != 0) << i;
+	return cards;
+}
 
 export using MoveBoard = std::array<U32, 25>;
+
+export __FORCE_INLINE constexpr U32 moveBoardFromCardBits(const std::array<MoveBoard, 5>& moveBoards, U32 enabledCards, U32 pp) {
+	U32 result = 0;
+	for (U64 i = 0; i < 5; i++)
+		if (enabledCards & (1U << i))
+			result |= moveBoards[i][pp];
+	return result;
+}
+export __FORCE_INLINE constexpr U32 moveBoardFromCardEntry(const std::array<MoveBoard, 5>& moveBoards, U32 cardEntry, U32 pp) {
+	U32 result = 0;
+	for (U64 i = 0; i < 5; i++)
+		if (cardEntry & P_HAS_CARD_IN_MASK<0>[i])
+			result |= moveBoards[i][pp];
+	return result;
+}
 
 template<bool invert>
 constexpr auto generateMoveBoard(const U32 card) {
@@ -217,7 +241,8 @@ export constexpr auto combineMoveBoards(const MoveBoard& a, const MoveBoard& b) 
 export using CardSet = std::array<U32, 5>;
 
 export struct MoveBoardSet {
-	MoveBoard all;
+	// [cards][from]: landings with any of these cards (bit i = card i).
+	std::array<MoveBoard, 32> forCards;
 	std::array<MoveBoard, 5> moveBoards;
 	// [from][to]: SIDE_CARD_MASK of all cards that make this move.
 	std::array<std::array<U32, 25>, 25> sideCards;
@@ -226,25 +251,18 @@ export struct MoveBoardSet {
 template<bool invert>
 constexpr auto generateMoveBoardSet(const CardSet& cards) {
 	MoveBoardSet set{};
-	U32 all = 0;
 	for (U64 i = 0; i < 5; i++) {
-		all |= cards[i];
 		set.moveBoards[i] = generateMoveBoard<invert>(cards[i]);
 		for (U64 from = 0; from < 25; from++)
 			for (U64 to = 0; to < 25; to++)
 				if (set.moveBoards[i][from] & (1U << to))
 					set.sideCards[from][to] |= SIDE_CARD_MASK[i];
 	}
-	set.all = generateMoveBoard<invert>(all);
+	for (U32 subset = 0; subset < 32; subset++)
+		for (U32 i = 0; i < 5; i++)
+			if (subset & (1U << i))
+				set.forCards[subset] = combineMoveBoards(set.forCards[subset], set.moveBoards[i]);
 	return set;
-}
-
-// Squares reachable from pp with any of these cards (bit i = card i).
-export __FORCE_INLINE constexpr U32 landingsForCards(int pp, U32 cards, const MoveBoardSet& set) {
-	U32 landings = 0;
-	for (; cards; cards &= cards - 1)
-		landings |= set.moveBoards[std::countr_zero(cards)][pp];
-	return landings;
 }
 
 export struct CardsInfo {

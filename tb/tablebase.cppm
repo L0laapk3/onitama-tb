@@ -52,11 +52,11 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 				auto& rowP1 = row[rankFirstPieces<false, P0C, P1C>(bbp0)][rankSecondPieces<false, P0C, P1C>(bbp1, bbp0)];
 				auto* it = &rowP1[0][0];
 				std::array<U32, P0C * P1C> entries;
+				U32 unresolvedUnion = 0;
 
 				{ // Optimization: If the entire block of king perms is empty, continue early
 					auto* cardsEntry = it;
-					auto entryIt = entries.begin();
-					bool blockHasUnresolved = false; // every entry has to be read: STEP 1 initializes them, the forward movegen uses them
+					auto entryIt = entries.begin(); // every entry has to be read: STEP 1 initializes them, the forward movegen uses them
 					for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 						auto& rowK0 = rowP1[ik0];
 						const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
@@ -78,10 +78,10 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 								// loop over all entries, when a stored bit is 1 that means the entry is still unresolved.
 								*entryIt = cardsEntry->load(std::memory_order_relaxed);
 							}
-							blockHasUnresolved |= *entryIt != 0;
+							unresolvedUnion |= *entryIt;
 						}
 					}
-					if (!blockHasUnresolved)
+					if (!unresolvedUnion)
 						continue;
 				}
 
@@ -93,7 +93,8 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 						int pp = std::countr_zero(sourcePieces);
 						sourcePieces &= sourcePieces - 1;
 						const U32 bbp0_without_source = bbp0 - sourcePiece;
-						U32 landPieces = cards.moveBoardsForward.all[pp] & ~bbp0; // can't land on my own pieces
+						U32 landPieces = moveBoardFromCardEntry(cards.moveBoardsForward.moveBoards, unresolvedUnion, pp); // Its possible that in the future, its faster again to only calculate these once per forwards movegen.
+						landPieces &= ~bbp0; // can't land on my own pieces
 						while (landPieces) {
 							const U32 landPiece = landPieces & -landPieces;
 							landPieces &= landPieces - 1;
@@ -106,7 +107,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 									const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
 									const U32 bbk0_new = sourcePiece == bbk0 ? landPiece : bbk0;
 									for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, entryIt++) {
-										if (!*entryIt) // already resolved (e.g. win in 0), or every perm already has a move to an unresolved child
+										if (!*entryIt) // no perm left that this move could help: resolved (e.g. win in 0), already has a move to an unresolved child, or lacks the cards
 											continue;
 										const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
 										if (landPiece == bbk1) // King takes are obviously resolved
@@ -167,12 +168,12 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 									}
 								}
 
-								U32 remaining = 0;
+								unresolvedUnion = 0;
 								for (int i = 0; i < P0C * P1C; i++) {
 									entries[i] &= ~unmoveCardEntry(otherEntry[i] & cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)]);
-									remaining |= entries[i];
+									unresolvedUnion |= entries[i];
 								}
-								if (!remaining)
+								if (!unresolvedUnion)
 									goto ForwardMovegenDone;
 							}
 						}
@@ -203,7 +204,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 						sourcePieces &= sourcePieces - 1;
 						const U32 bbp1_without_source = bbp1 - sourcePiece;
 						const int iUntaken = std::popcount(bbp0 & (sourcePiece - 1));
-						U32 landPieces = landingsForCards(pp, usedCards, cards.moveBoardsForward) & ~(bbp0 | bbp1);
+						U32 landPieces = cards.moveBoardsForward.forCards[usedCards][pp] & ~(bbp0 | bbp1);
 						while (landPieces) {
 							const U32 landPiece = landPieces & -landPieces;
 							landPieces &= landPieces - 1;
