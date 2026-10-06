@@ -26,6 +26,7 @@ constexpr bool VERBOSE = true;
 template <U16 TB_MEN, U16 P0C, U16 P1C, int STEP>
 void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk, std::atomic<U64>& chunkCounter, bool& updated) {
 	auto& row = tb.template getRow<P0C, P1C>();
+	auto& landingsRow = tb.template getLandings<P0C, P1C>();
 
 	// Iterate in mirrored <P1C, P0C> order: the outer loop fixes p1's pieces, so all non-take children share the mirrored row at ip0_new.
 	constexpr U32 OUTER_SIZE = PAWNTABLE_P0<P1C, P0C>.size();
@@ -47,7 +48,11 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 					ip0s_taken[i] = rankFirstPieces<true, P1C - 1, P0C>(bbp1 - pp1);
 				}
 			}
-			for (int ipInner = 0; ipInner < static_cast<int>(INNER_SIZE); ipInner++) {
+			auto* landingsIt = landingsRow[ip0_new].data();
+			for (int ipInner = 0; ipInner < static_cast<int>(INNER_SIZE); ipInner++, landingsIt++) {
+				U32& unresolvedLandings = *landingsIt;
+				if (STEP > 1 && !unresolvedLandings)
+					continue;
 				const U32 bbp0 = unrankSecondPieces<true, P1C, P0C>(ipInner, bbp1);
 				auto& rowP1 = row[rankFirstPieces<false, P0C, P1C>(bbp0)][rankSecondPieces<false, P0C, P1C>(bbp1, bbp0)];
 				auto* it = &rowP1[0][0];
@@ -81,8 +86,10 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 							unresolvedUnion |= *entryIt;
 						}
 					}
-					if (!unresolvedUnion)
+					if (!unresolvedUnion) {
+						unresolvedLandings = 0;
 						continue;
+					}
 				}
 
 				const std::array<U32, P0C * P1C> startEntries = entries;
@@ -100,7 +107,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 						U32 landPieces = moveBoardFromCardEntry(cards.moveBoardsForward.moveBoards, unresolvedUnion, pp); // Its possible that in the future, its faster again to only calculate these once per forwards movegen.
 						newUnresolvedLandings |= moveBoardFromCardEntry(cards.moveBoardsForward.moveBoards, startUnion, pp) & ~landPieces; // skipped by the card filter, may still help the start entries
 						if constexpr (STEP > 1)
-							landPieces &= rowP1.unresolvedLandings;
+							landPieces &= unresolvedLandings;
 						landPieces &= ~bbp0; // lookup unresolved landings & can't land on my own pieces
 						while (landPieces) {
 							const U32 landPiece = landPieces & -landPieces;
@@ -199,7 +206,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 						}
 					}
 				}
-				rowP1.unresolvedLandings &= newUnresolvedLandings;
+				unresolvedLandings &= newUnresolvedLandings; // 0 means none helped: every unresolved entry is lost below, so the block becomes resolved
 
 				// Unresolved card perms where every move leads to a resolved child, i.e. a win for the opponent.
 				std::array<U32, P0C * P1C> newLostEntries;
@@ -298,7 +305,6 @@ U64 countUnresolved(const Storage& tb) {
 	constexpr U64 CHUNK_WORDS = 1 << 16;
 	std::vector<std::span<const U64>> chunks;
 	U64 tailCount = 0;
-	U64 prefixCount = 0;
 	tb.forEachRow([&]<U16 P0C, U16 P1C> {
 		const auto& row = tb.template getRow<P0C, P1C>();
 		const U64 entries = row.size() * sizeof(row[0]) / sizeof(U32);
@@ -307,13 +313,10 @@ U64 countUnresolved(const Storage& tb) {
 			chunks.emplace_back(words + i, std::min(CHUNK_WORDS, entries / 2 - i));
 		if (entries % 2)
 			tailCount += std::popcount(reinterpret_cast<const U32*>(words)[entries - 1]);
-		for (const auto& playerRow : row) // the unresolvedLandings words are not entries
-			for (const auto& block : playerRow)
-				prefixCount += std::popcount(block.unresolvedLandings);
 	});
 
 	std::atomic<U64> nextChunk = 0;
-	std::atomic<U64> count = tailCount - prefixCount;
+	std::atomic<U64> count = tailCount;
 	{
 		std::vector<std::jthread> threads;
 		for (unsigned i = 0; i < std::max(1u, std::thread::hardware_concurrency()); i++)
@@ -418,14 +421,7 @@ struct TableBase {
 	using KingsRow = std::array<CardsEntry, P1C>;
 
 	template <U16 P0C, U16 P1C>
-	struct KingsBlock {
-		U32 unresolvedLandings;
-		std::array<KingsRow<P0C, P1C>, P0C> kings;
-
-		auto& operator[](this auto& self, std::size_t ik0) { return self.kings[ik0]; }
-		auto* data(this auto& self) { return self.kings.data(); }
-		static constexpr std::size_t size() { return P0C; }
-	};
+	using KingsBlock = std::array<KingsRow<P0C, P1C>, P0C>;
 
 	template <U16 P0C, U16 P1C>
 	using PlayerRow = std::array<KingsBlock<P0C, P1C>, PAWNTABLE_P1<P0C, P1C>.size()>;
@@ -433,16 +429,25 @@ struct TableBase {
 	template <U16 P0C, U16 P1C>
 	struct alignas(64) Row : std::array<PlayerRow<P0C, P1C>, PAWNTABLE_P0<P0C, P1C>.size()> {};
 
+	// Unresolved landings of each block, in processRow's iteration order ([ip0_new][ipInner] of the mirrored row) so it is streamed. 0 = block resolved.
+	template <U16 P0C, U16 P1C>
+	struct alignas(64) LandingsRow : std::array<std::array<U32, PAWNTABLE_P1<P1C, P0C>.size()>, PAWNTABLE_P0<P1C, P0C>.size()> {};
+
 	struct Storage {
 		template <std::size_t... I>
 		static auto _Storage(std::index_sequence<I...>) -> std::tuple<Row<PIECE_COUNTS<TB_MEN>[I].p0c, PIECE_COUNTS<TB_MEN>[I].p1c>...>;
+		template <std::size_t... I>
+		static auto _Landings(std::index_sequence<I...>) -> std::tuple<LandingsRow<PIECE_COUNTS<TB_MEN>[I].p0c, PIECE_COUNTS<TB_MEN>[I].p1c>...>;
 		union { // In a union so the tuple's value-initialization doesn't zero the whole table before the fill.
 			decltype(_Storage(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{})) rows;
+		};
+		union {
+			decltype(_Landings(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{})) landings;
 		};
 
 		Storage() {
 			std::fill_n(reinterpret_cast<U32*>(&rows), sizeof(rows) / sizeof(U32), CARD_PERMS_MASK);
-			// This also sets every unresolvedLandings to CARD_PERMS_MASK, which includes all 25 landing squares.
+			std::fill_n(reinterpret_cast<U32*>(&landings), sizeof(landings) / sizeof(U32), (1U << 25) - 1);
 		}
 
 		// madvise has to happen before the first touch, which is the fill in the constructor.
@@ -467,6 +472,11 @@ struct TableBase {
 		template <U16 P0C, U16 P1C>
 		auto& getRow(this auto& self) {
 			return std::get<rowIndex<TB_MEN>(P0C, P1C)>(self.rows);
+		}
+
+		template <U16 P0C, U16 P1C>
+		auto& getLandings(this auto& self) {
+			return std::get<rowIndex<TB_MEN>(P0C, P1C)>(self.landings);
 		}
 	};
 
