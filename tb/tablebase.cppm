@@ -85,8 +85,12 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 						continue;
 				}
 
+				const std::array<U32, P0C * P1C> startEntries = entries;
+				const U32 startUnion = unresolvedUnion;
+				U32 newUnresolvedLandings = 0;
 				// From here on, entries only keeps the unresolved card perms that have no move to an unresolved child yet.
 				{ // forwards movegen - check if all possible p0 moves are resolved
+
 					U32 sourcePieces = bbp0;
 					for (int iSrc = 0; iSrc < P0C; iSrc++) {
 						const U32 sourcePiece = sourcePieces & -sourcePieces;
@@ -94,7 +98,10 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 						sourcePieces &= sourcePieces - 1;
 						const U32 bbp0_without_source = bbp0 - sourcePiece;
 						U32 landPieces = moveBoardFromCardEntry(cards.moveBoardsForward.moveBoards, unresolvedUnion, pp); // Its possible that in the future, its faster again to only calculate these once per forwards movegen.
-						landPieces &= ~bbp0; // can't land on my own pieces
+						newUnresolvedLandings |= moveBoardFromCardEntry(cards.moveBoardsForward.moveBoards, startUnion, pp) & ~landPieces; // skipped by the card filter, may still help the start entries
+						if constexpr (STEP > 1)
+							landPieces &= rowP1.unresolvedLandings;
+						landPieces &= ~bbp0; // lookup unresolved landings & can't land on my own pieces
 						while (landPieces) {
 							const U32 landPiece = landPieces & -landPieces;
 							landPieces &= landPieces - 1;
@@ -102,13 +109,17 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 
 							if constexpr (STEP == 1) {
 								auto entryIt = entries.begin();
+								auto startEntryIt = startEntries.begin();
 								for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 									auto& rowK0 = rowP1[ik0];
 									const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
 									const U32 bbk0_new = sourcePiece == bbk0 ? landPiece : bbk0;
-									for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, entryIt++) {
-										if (!*entryIt) // no perm left that this move could help: resolved (e.g. win in 0), already has a move to an unresolved child, or lacks the cards
+									for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, entryIt++, startEntryIt++) {
+										if (!*entryIt) { // no perm left that this move could help: resolved (e.g. win in 0), already has a move to an unresolved child, or lacks the cards
+											if (*startEntryIt)
+												newUnresolvedLandings |= landPiece; // not evaluated, may still help the start entry
 											continue;
+										}
 										const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
 										if (landPiece == bbk1) // King takes are obviously resolved
 											continue;
@@ -118,7 +129,10 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 											.bbk = { bbk0_new, bbk1 },
 										};
 										const U32 unresolvedChild = ~board.getWinInOneCards<1>(cards.moveBoardsForward);
-										*entryIt &= ~unmoveCardEntry(unresolvedChild & cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)]);
+										const U32 helped = unmoveCardEntry(unresolvedChild & cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)]);
+										*entryIt &= ~helped;
+										if (helped & *startEntryIt)
+											newUnresolvedLandings |= landPiece;
 									}
 								}
 							} else {
@@ -170,18 +184,22 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 
 								unresolvedUnion = 0;
 								for (int i = 0; i < P0C * P1C; i++) {
-									entries[i] &= ~unmoveCardEntry(otherEntry[i] & cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)]);
+									const U32 helped = unmoveCardEntry(otherEntry[i] & cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)]);
+									entries[i] &= ~helped;
 									unresolvedUnion |= entries[i];
+									if (helped & startEntries[i])
+										newUnresolvedLandings |= landPiece;
 								}
-								if (!unresolvedUnion)
-									goto ForwardMovegenDone;
+								if (!unresolvedUnion) {
+									// The remaining moves are not evaluated, they may still help the start entries. The card filter marks the next sources.
+									newUnresolvedLandings |= landPieces;
+									break;
+								}
 							}
 						}
 					}
 				}
-				ForwardMovegenDone:
-
-
+				rowP1.unresolvedLandings &= newUnresolvedLandings;
 
 				// Unresolved card perms where every move leads to a resolved child, i.e. a win for the opponent.
 				std::array<U32, P0C * P1C> newLostEntries;
@@ -280,6 +298,7 @@ U64 countUnresolved(const Storage& tb) {
 	constexpr U64 CHUNK_WORDS = 1 << 16;
 	std::vector<std::span<const U64>> chunks;
 	U64 tailCount = 0;
+	U64 prefixCount = 0;
 	tb.forEachRow([&]<U16 P0C, U16 P1C> {
 		const auto& row = tb.template getRow<P0C, P1C>();
 		const U64 entries = row.size() * sizeof(row[0]) / sizeof(U32);
@@ -288,10 +307,13 @@ U64 countUnresolved(const Storage& tb) {
 			chunks.emplace_back(words + i, std::min(CHUNK_WORDS, entries / 2 - i));
 		if (entries % 2)
 			tailCount += std::popcount(reinterpret_cast<const U32*>(words)[entries - 1]);
+		for (const auto& playerRow : row) // the unresolvedLandings words are not entries
+			for (const auto& block : playerRow)
+				prefixCount += std::popcount(block.unresolvedLandings);
 	});
 
 	std::atomic<U64> nextChunk = 0;
-	std::atomic<U64> count = tailCount;
+	std::atomic<U64> count = tailCount - prefixCount;
 	{
 		std::vector<std::jthread> threads;
 		for (unsigned i = 0; i < std::max(1u, std::thread::hardware_concurrency()); i++)
@@ -396,7 +418,14 @@ struct TableBase {
 	using KingsRow = std::array<CardsEntry, P1C>;
 
 	template <U16 P0C, U16 P1C>
-	using KingsBlock = std::array<KingsRow<P0C, P1C>, P0C>;
+	struct KingsBlock {
+		U32 unresolvedLandings;
+		std::array<KingsRow<P0C, P1C>, P0C> kings;
+
+		auto& operator[](this auto& self, std::size_t ik0) { return self.kings[ik0]; }
+		auto* data(this auto& self) { return self.kings.data(); }
+		static constexpr std::size_t size() { return P0C; }
+	};
 
 	template <U16 P0C, U16 P1C>
 	using PlayerRow = std::array<KingsBlock<P0C, P1C>, PAWNTABLE_P1<P0C, P1C>.size()>;
@@ -413,6 +442,7 @@ struct TableBase {
 
 		Storage() {
 			std::fill_n(reinterpret_cast<U32*>(&rows), sizeof(rows) / sizeof(U32), CARD_PERMS_MASK);
+			// This also sets every unresolvedLandings to CARD_PERMS_MASK, which includes all 25 landing squares.
 		}
 
 		// madvise has to happen before the first touch, which is the fill in the constructor.

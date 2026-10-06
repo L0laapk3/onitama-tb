@@ -11,6 +11,7 @@ bazel run //tb 8 # Larger tablebase size for benchmarking
 bazel run //tb --config=symbols
 bazel run //tb --config=dbg
 ```
+The real tablebase is 10 large, but this is too large for reasonable testing and does not fit in host computer memory.
 
 `tb/main.cpp` picks the card set and `TB_MEN`. The build itself has self-checks: it prints counts per depth and
 throws if known totals (win in 0, win in 1, total resolved) don't match. Treat those as the test suite, but
