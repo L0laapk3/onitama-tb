@@ -1,3 +1,6 @@
+module;
+#include <cerrno>
+#include <sys/mman.h>
 export module tb:tablebase;
 import std;
 import :types;
@@ -18,11 +21,11 @@ struct ThreadObj {
 constexpr U64 CHUNK_P0_POSITIONS = 1;
 constexpr bool VERBOSE = true;
 
-// STEP 1: no TB lookups, just check win in 0/invalid boards & win in 1.
-// STEP 2: TB lookups.
+// STEP 1: no TableBase lookups, just check win in 0/invalid boards & win in 1.
+// STEP 2: TableBase lookups.
 template <U16 TB_MEN, U16 P0C, U16 P1C, int STEP>
 void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk, std::atomic<U64>& chunkCounter, bool& updated) {
-	auto& row = std::get<rowIndex<TB_MEN>(P0C, P1C)>(tb);
+	auto& row = tb.template getRow<P0C, P1C>();
 
 	// Iterate in mirrored <P1C, P0C> order: the outer loop fixes p1's pieces, so all non-take children share the mirrored row at ip0_new.
 	constexpr U32 OUTER_SIZE = PAWNTABLE_P0<P1C, P0C>.size();
@@ -34,6 +37,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 		const U32 end = std::min<U32>(begin + CHUNK_P0_POSITIONS, OUTER_SIZE);
 		for (int ip0_new = begin; ip0_new < end; ip0_new++) { // loop over the outer table in an order that maximizes locality for forward move generation
 			const U32 bbp1 = unrankFirstPieces<true, P1C, P0C>(ip0_new);
+
 			std::array<int, P1C> ip0s_taken; // precalculate all the ranks for different taken pieces
 			if constexpr (P1C > 1) {
 				U32 bbp1_source = bbp1;
@@ -56,11 +60,11 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 						for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++) {
 
 							auto& cardsEntry = *(entryIt++);
+							const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
+							Board board{ bbp0, bbp1, bbk0, bbk1 };
 							U32 entry;
 							if constexpr (STEP == 1) {
-								const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
 								// Other threads may already have reverse marked bits of this entry as win in 3: clear with RMWs to keep those marks.
-								Board board{ bbp0, bbp1, bbk0, bbk1 };
 								if (board.isTempleEnded()) { // Win in 0
 									cardsEntry.store(0, std::memory_order_relaxed);
 									entry = 0; // Win in 0 - skip all the forwards and backwards movegen
@@ -129,7 +133,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 								auto otherIt = otherEntry.begin();
 								if (!isTakeMove) {
 									const int ip1_new = rankSecondPieces<true, P1C, P0C>(bbp0_new, bbp1);
-									const auto& pawnRow_new = std::get<rowIndex<TB_MEN>(P1C, P0C)>(tb)[ip0_new][ip1_new];
+									const auto& pawnRow_new = tb.template getRow<P1C, P0C>()[ip0_new][ip1_new];
 									__builtin_prefetch(pawnRow_new.data(), 0, 0);
 
 									for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
@@ -150,7 +154,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 										const U32 bbp1_taken = bbp1 & ~landPiece;
 										const int ip0_taken = ip0s_taken[std::popcount(bbp1 & (landPiece - 1))];
 										const int ip1_taken = rankSecondPieces<true, P1C - 1, P0C>(bbp0_new, bbp1_taken);
-										const auto& pawnrow_taken = std::get<rowIndex<TB_MEN>(P1C - 1, P0C)>(tb)[ip0_taken][ip1_taken];
+										const auto& pawnrow_taken = tb.template getRow<P1C - 1, P0C>()[ip0_taken][ip1_taken];
 										__builtin_prefetch(pawnrow_taken.data(), 0, 0);
 
 										for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
@@ -208,7 +212,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 
 							const int ip0_new = rankFirstPieces<true, P1C, P0C>(bbp1_new);
 							const int ip1_new = rankSecondPieces<true, P1C, P0C>(bbp0, bbp1_new); // TODO incremental?
-							auto& pawnRow_new = std::get<rowIndex<TB_MEN>(P1C, P0C)>(tb)[ip0_new][ip1_new];
+							auto& pawnRow_new = tb.template getRow<P1C, P0C>()[ip0_new][ip1_new];
 							__builtin_prefetch(pawnRow_new.data(), 0, 0);
 
 							auto& pawnRow_untaken = [&] -> auto& { // the <P1C, P0C + 1> row does not exist for the other rows
@@ -216,7 +220,7 @@ void processRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk
 									const U32 bbp0_untaken = bbp0 | sourcePiece;
 									const int ip0_untaken = rankFirstPieces<true, P1C, P0C + 1>(bbp1_new);
 									const int ip1_untaken = rankSecondPieces<true, P1C, P0C + 1>(bbp0_untaken, bbp1_new); // TODO incremental?
-									auto& pawnRow_untaken = std::get<rowIndex<TB_MEN>(P1C, P0C + 1)>(tb)[ip0_untaken][ip1_untaken];
+									auto& pawnRow_untaken = tb.template getRow<P1C, P0C + 1>()[ip0_untaken][ip1_untaken];
 									__builtin_prefetch(pawnRow_untaken.data(), 0, 0);
 									return pawnRow_untaken;
 								} else
@@ -268,7 +272,7 @@ void singleDepthPass(const CardsInfo& cards, Storage& tb, std::atomic<U64>& chun
 	U64 chunk = chunkCounter++;
 	U64 rowStartChunk = 0;
 
-	TableBase<TB_MEN>::forEachRow([&]<U16 P0C, U16 P1C> {
+	tb.forEachRow([&]<U16 P0C, U16 P1C> {
 		processRow<TB_MEN, P0C, P1C, STEP>(cards, tb, chunk, rowStartChunk, chunkCounter, updated);
 	});
 }
@@ -279,16 +283,15 @@ U64 countUnresolved(const Storage& tb) {
 	constexpr U64 CHUNK_WORDS = 1 << 16;
 	std::vector<std::span<const U64>> chunks;
 	U64 tailCount = 0;
-	std::apply([&](const auto&... rows) {
-		([&](const auto& row) {
-			const U64 entries = row.size() * sizeof(row[0]) / sizeof(U32);
-			const U64* words = reinterpret_cast<const U64*>(row.data());
-			for (U64 i = 0; i < entries / 2; i += CHUNK_WORDS)
-				chunks.emplace_back(words + i, std::min(CHUNK_WORDS, entries / 2 - i));
-			if (entries % 2)
-				tailCount += std::popcount(reinterpret_cast<const U32*>(words)[entries - 1]);
-		}(rows), ...);
-	}, tb);
+	tb.forEachRow([&]<U16 P0C, U16 P1C> {
+		const auto& row = tb.template getRow<P0C, P1C>();
+		const U64 entries = row.size() * sizeof(row[0]) / sizeof(U32);
+		const U64* words = reinterpret_cast<const U64*>(row.data());
+		for (U64 i = 0; i < entries / 2; i += CHUNK_WORDS)
+			chunks.emplace_back(words + i, std::min(CHUNK_WORDS, entries / 2 - i));
+		if (entries % 2)
+			tailCount += std::popcount(reinterpret_cast<const U32*>(words)[entries - 1]);
+	});
 
 	std::atomic<U64> nextChunk = 0;
 	std::atomic<U64> count = tailCount;
@@ -309,7 +312,7 @@ U64 countUnresolved(const Storage& tb) {
 template <U16 TB_MEN>
 consteval U64 countTotal() {
 	U64 total = 0;
-	TableBase<TB_MEN>::forEachRow([&]<U16 P0C, U16 P1C> {
+	TableBase<TB_MEN>::Storage::forEachRow([&]<U16 P0C, U16 P1C> {
 		total += 30ULL * PAWNTABLE_P0<P0C, P1C>.size() * PAWNTABLE_P1<P0C, P1C>.size() * P0C * P1C;
 	});
 	return total;
@@ -393,39 +396,61 @@ struct TableBase {
 	using CardsEntry = std::atomic<U32>;
 
 	template <U16 P0C, U16 P1C>
-	using TableKingPermsP1 = std::array<CardsEntry, P1C>;
+	using KingsRow = std::array<CardsEntry, P1C>;
 
 	template <U16 P0C, U16 P1C>
-	using TableKingPermsP0 = std::array<TableKingPermsP1<P0C, P1C>, P0C>;
+	using KingsBlock = std::array<KingsRow<P0C, P1C>, P0C>;
 
 	template <U16 P0C, U16 P1C>
-	using TableP1 = std::array<TableKingPermsP0<P0C, P1C>, PAWNTABLE_P1<P0C, P1C>.size()>;
+	using PlayerRow = std::array<KingsBlock<P0C, P1C>, PAWNTABLE_P1<P0C, P1C>.size()>;
 
 	template <U16 P0C, U16 P1C>
-	struct alignas(64) TableRow : std::array<TableP1<P0C, P1C>, PAWNTABLE_P0<P0C, P1C>.size()> {};
+	struct alignas(64) Row : std::array<PlayerRow<P0C, P1C>, PAWNTABLE_P0<P0C, P1C>.size()> {};
 
-	template <std::size_t... I>
-	static auto tableBaseStorage(std::index_sequence<I...>) -> std::tuple<TableRow<PIECE_COUNTS<TB_MEN>[I].p0c, PIECE_COUNTS<TB_MEN>[I].p1c>...>;
+	struct Storage {
+		template <std::size_t... I>
+		static auto _Storage(std::index_sequence<I...>) -> std::tuple<Row<PIECE_COUNTS<TB_MEN>[I].p0c, PIECE_COUNTS<TB_MEN>[I].p1c>...>;
+		union { // In a union so the tuple's value-initialization doesn't zero the whole table before the fill.
+			decltype(_Storage(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{})) rows;
+		};
 
-	using TableBaseStorage = decltype(tableBaseStorage(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{}));
+		Storage() {
+			std::fill_n(reinterpret_cast<U32*>(&rows), sizeof(rows) / sizeof(U32), CARD_PERMS_MASK);
+		}
 
-	static constexpr void forEachRow(auto&& f) {
-		[&]<std::size_t... I>(std::index_sequence<I...>) {
-			(f.template operator()<PIECE_COUNTS<TB_MEN>[I].p0c, PIECE_COUNTS<TB_MEN>[I].p1c>(), ...);
-		}(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{});
-	}
+		// madvise has to happen before the first touch, which is the fill in the constructor.
+		static void* operator new(std::size_t size) {
+			constexpr std::size_t HUGE_PAGE = 2 << 20;
+			const std::size_t rounded = (size + HUGE_PAGE - 1) / HUGE_PAGE * HUGE_PAGE;
+			void* p = std::aligned_alloc(HUGE_PAGE, rounded);
+			if (!p)
+				throw std::bad_alloc();
+			if (madvise(p, rounded, MADV_HUGEPAGE))
+				std::cerr << std::format("madvise(MADV_HUGEPAGE) failed: {}\n", std::strerror(errno));
+			return p;
+		}
+		static void operator delete(void* p) { std::free(p); }
+
+		static constexpr void forEachRow(auto&& f) {
+			[&]<std::size_t... I>(std::index_sequence<I...>) {
+				(f.template operator()<PIECE_COUNTS<TB_MEN>[I].p0c, PIECE_COUNTS<TB_MEN>[I].p1c>(), ...);
+			}(std::make_index_sequence<PIECE_COUNTS<TB_MEN>.size()>{});
+		}
+
+		template <U16 P0C, U16 P1C>
+		auto& getRow(this auto& self) {
+			return std::get<rowIndex<TB_MEN>(P0C, P1C)>(self.rows);
+		}
+	};
 
 	explicit TableBase(const CardsInfo& cards, U64 stopAtIteration = std::numeric_limits<U64>::max()) {
 		const auto allocStart = std::chrono::steady_clock::now();
-		// make_unique makes clang shit itself at compile time
-		void* storage = ::operator new(sizeof(TableBaseStorage), std::align_val_t{alignof(TableBaseStorage)});
-		std::fill_n(static_cast<U32*>(storage), sizeof(TableBaseStorage) / sizeof(U32), CARD_PERMS_MASK);
-		tb.reset(static_cast<TableBaseStorage*>(storage));
-
+		tb = std::make_unique<Storage>();
 		const std::chrono::duration<double> allocTime = std::chrono::steady_clock::now() - allocStart;
-		std::cout << std::format("allocated {:.1f}GB in {:.2f} seconds\n", sizeof(TableBaseStorage) / 1e9, allocTime.count());
+		std::cout << std::format("allocated {:.1f}GB in {:.2f} seconds\n", sizeof(Storage) / 1e9, allocTime.count());
+
 		runTableBaseBuild<TB_MEN>(cards, *tb, stopAtIteration, allocStart);
 	}
 
-	std::unique_ptr<TableBaseStorage> tb;
+	std::unique_ptr<Storage> tb;
 };

@@ -13,8 +13,12 @@ export struct Board {
 		return reverseMoveBoard[std::countr_zero(bbk)] & bbp;
 	}
 
+	template <bool player>
+	static constexpr bool isPlayerTempleEnded(const U32& bbk) {
+		return bbk == (1U << PTEMPLE[player]);
+	}
 	constexpr bool isTempleEnded() const {
-		return bbk[0] == (1U << PTEMPLE[0]) || bbk[1] == (1U << PTEMPLE[1]);
+		return isPlayerTempleEnded<0>(bbk[0]) || isPlayerTempleEnded<1>(bbk[1]);
 	}
 
 	// is !player king safe?
