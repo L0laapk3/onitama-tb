@@ -116,38 +116,40 @@ __FORCE_INLINE U32 unrankSecondKing(int ik, U32 bbp) {
 	return unrankKings<false, invert, P0C, P1C>(ik, bbp);
 }
 
-// BINOM[i][n]: rank contribution of the i-th lowest set bit on square n, colex over N pieces
-template <bool invert, U16 N>
+// BINOM[i][n]: rank contribution of the i-th lowest set bit on square n, colex over N pieces on SQUARES squares
+template <bool invert, U16 N, U16 SQUARES>
 constexpr auto BINOM = [] {
-	std::array<std::array<U32, 25>, N + 1> a{};
-	for (int n = 0; n < 25; n++) {
+	std::array<std::array<U32, SQUARES>, N + 1> a{};
+	for (int n = 0; n < SQUARES; n++) {
 		a[0][n] = 1;
 		for (int k = 1; k <= N; k++)
 			a[k][n] = n == 0 ? 0 : a[k - 1][n - 1] + a[k][n - 1];
 	}
-	std::array<std::array<U32, 25>, N> b;
+	std::array<std::array<U32, SQUARES>, N> b;
 	for (int i = 0; i < N; i++)
-		for (int n = 0; n < 25; n++)
-			b[i][n] = invert ? a[N - i][24 - n] : a[i + 1][n];
+		for (int n = 0; n < SQUARES; n++)
+			b[i][n] = invert ? a[N - i][SQUARES - 1 - n] : a[i + 1][n];
 	return b;
 }();
 
-export template <bool invert, U16 P0C, U16 P1C, U16 N = P0C>
-__FORCE_INLINE int rankFirstPieces(U32 bbp) {
+template <bool invert, U16 N, U16 SQUARES>
+__FORCE_INLINE int rankPieces(U32 bbp) {
 	int index = 0;
 	for (int i = 0; i < static_cast<int>(N); i++) {
-		index += BINOM<invert, N>[i][std::countr_zero(bbp)];
+		index += BINOM<invert, N, SQUARES>[i][std::countr_zero(bbp)];
 		bbp &= bbp - 1;
 	}
 	return index;
 }
 
 export template <bool invert, U16 P0C, U16 P1C>
+__FORCE_INLINE int rankFirstPieces(U32 bbp) {
+	return rankPieces<invert, P0C, 25>(bbp);
+}
+
+export template <bool invert, U16 P0C, U16 P1C>
 __FORCE_INLINE int rankSecondPieces(U32 bbp, U32 bbpOther) {
-	bbp = _pext_u32(bbp, ~bbpOther);
-	if constexpr (invert)
-		bbp <<= P0C;
-	return rankFirstPieces<invert, P0C, P1C, P1C>(bbp);
+	return rankPieces<invert, P1C, 25 - P0C>(_pext_u32(bbp, ~bbpOther));
 }
 
 export template <bool invert, U16 P0C, U16 P1C>
