@@ -65,7 +65,7 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 				const U32 bbp0 = unrankSecondPieces<true, P1C, P0C>(ipInner, bbp1);
 				auto& rowP1 = row[rankFirstPieces<false, P0C, P1C>(bbp0)][rankSecondPieces<false, P0C, P1C>(bbp1, bbp0)];
 				auto* it = &rowP1[0][0];
-				__builtin_prefetch(it, 0, 0);
+				__builtin_prefetch(it, 1, 3);
 				std::array<U32, P0C * P1C> entries;
 				U32 unresolvedUnion = 0;
 
@@ -280,7 +280,7 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 								const int ip0_untaken = rankFirstPieces<true, P1C, P0C + 1>(bbp1_new);
 								const int ip1_untaken = rankSecondPieces<true, P1C, P0C + 1>(bbp0_untaken, bbp1_new); // TODO incremental?
 								entry.pawnRow_untaken = &tb.template getRow<P1C, P0C + 1>()[ip0_untaken][ip1_untaken][0][0];
-								__builtin_prefetch(entry.pawnRow_untaken, 0, 0);
+								__builtin_prefetch(entry.pawnRow_untaken, 1, 3);
 							}
 						}
 					}
