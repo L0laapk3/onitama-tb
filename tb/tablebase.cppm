@@ -288,13 +288,13 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 							const int ip0_new = rankFirstPieces<true, P1C, P0C>(bbp1_new);
 							const int ip1_new = rankSecondPieces<true, P1C, P0C>(bbp0, bbp1_new); // TODO incremental?
 							entry.pawnRow_new = &tb.template getRow<P1C, P0C>()[ip0_new][ip1_new][0][0];
-							__builtin_prefetch(entry.pawnRow_new, 1, 3);
+							__builtin_prefetch(entry.pawnRow_new, 1, 0);
 							if constexpr (P0C < TB_MEN / 2) {
 								const U32 bbp0_untaken = bbp0 | sourcePiece;
 								const int ip0_untaken = rankFirstPieces<true, P1C, P0C + 1>(bbp1_new);
 								const int ip1_untaken = rankSecondPieces<true, P1C, P0C + 1>(bbp0_untaken, bbp1_new); // TODO incremental?
 								entry.pawnRow_untaken = &tb.template getRow<P1C, P0C + 1>()[ip0_untaken][ip1_untaken][0][0];
-								__builtin_prefetch(entry.pawnRow_untaken, 1, 3);
+								__builtin_prefetch(entry.pawnRow_untaken, 1, 0);
 							}
 						}
 					}
