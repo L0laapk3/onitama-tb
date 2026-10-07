@@ -227,6 +227,9 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 				}
 				if (!lostUnion)
 					continue;
+				std::array<U64, P0C * P1C> lostSplits;
+				for (int i = 0; i < P0C * P1C; i++)
+					lostSplits[i] = unmoveSplit(newLostEntries[i]);
 
 				{ // reverse movegen - all entries that can reach this entry are also marked as resolved.
 					struct EntryToUpdate {
@@ -256,10 +259,12 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 							const U32 bbp1_new = bbp1_without_source | landPiece;
 							const int landRankInv = std::popcount(bbp1_without_source & -landPiece);
 
+							const U64 sideSplit = cards.moveBoardsForward.unmoveSideCards[pp][std::countr_zero(landPiece)];
+
 							auto& entry = *entriesToUpdateIt++;
 							entry.iUntaken = iUntaken;
 							for (int i = 0; i < P0C * P1C; i++)
-								entry.newEntryBits[i] = newLostEntries[i] ? unmoveCardEntry(newLostEntries[i] & sideCards) : 0;
+								entry.newEntryBits[i] = unmoveJoin(lostSplits[i] & sideSplit);
 							for (int ik1 = 0; ik1 < P1C; ik1++) {
 								const int ik1_inv = invertKingRank<P1C>(ik1) + (iSrc < ik1); // the source piece leaving from below shifts the inverted king up
 								entry.ik0News[ik1] = iSrc == ik1 ? landRankInv : ik1_inv - (landRankInv >= ik1_inv); // landing below the king shifts it down

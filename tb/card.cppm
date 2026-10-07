@@ -152,10 +152,43 @@ export __FORCE_INLINE constexpr U32 swapPlayers(U32 bits) {
 export __FORCE_INLINE constexpr U32 unmoveCardEntry(U32 after) {
 	return swapPlayers(otherSideCards(after));
 }
+// unmoveCardEntry(a & b) == unmoveJoin(unmoveSplit(a) & unmoveSplit(b)), so either operand can be split ahead of time.
+// Rotations and swapPlayers are bit permutations, they distribute over & and |. The low and high halves hold the two rotations.
+export __FORCE_INLINE constexpr U64 unmoveSplit(U32 bits) {
+	const auto rotate = [](U32 b, int s) { return static_cast<U32>(((U64(b) << s) | (U64(b) >> (30 - s))) & CARD_PERMS_MASK); };
+	return U64(swapPlayers(rotate(bits, 10))) | (U64(swapPlayers(rotate(bits, 20))) << 32);
+}
+export __FORCE_INLINE constexpr U32 unmoveJoin(U64 split) {
+	return static_cast<U32>(split) | static_cast<U32>(split >> 32);
+}
+static_assert([] {
+	for (int a = 0; a < 30; a++) {
+		for (int b = 0; b < 32; b++) {
+			const U32 x = (1U << a) | (1U << ((a * 7 + 3) % 30));
+			const U32 s = (b & 1 ? SIDE_CARD_MASK[0] : 0) | (b & 2 ? SIDE_CARD_MASK[1] : 0) | (b & 4 ? SIDE_CARD_MASK[2] : 0) | (b & 8 ? SIDE_CARD_MASK[3] : 0) | (b & 16 ? SIDE_CARD_MASK[4] : 0);
+			if (unmoveCardEntry(x & s) != unmoveJoin(unmoveSplit(x) & unmoveSplit(s)))
+				return false;
+		}
+	}
+	return true;
+}());
+
 // Given an input card entry with these bits, return the bits that are the result of any move (with either card)
 export __FORCE_INLINE constexpr U32 moveCardEntry(U32 after) {
 	// return swapPlayers(otherSideCards(after));
 	return after; // TODO
+}
+
+U32 otherSideCards2(U32 bits) {
+	const U64 rotated = (U64(bits) << 10) | (U64(bits) << 20);
+	return static_cast<U32>(rotated | (rotated >> 30)) & CARD_PERMS_MASK;
+}
+export __FORCE_INLINE constexpr U32 unmoveCardEntry2(U32 after) {
+	U32 first  = after         & 0b00000'00000'11111'0'00000'00000'11111U;
+	U32 second = (after >> 5)  & 0b00000'00000'11111'0'00000'00000'11111U;
+	U32 third  = (after >> 10) & 0b00000'00000'11111'0'00000'00000'11111U;
+
+	return first * 0b1'00001'00000U | second * 0b1'00000'00001U | third * 0b0'00001'00001U;
 }
 
 // TODO
@@ -253,6 +286,8 @@ export struct MoveBoardSet {
 	std::array<MoveBoard, 5> moveBoards;
 	// [from][to]: SIDE_CARD_MASK of all cards that make this move.
 	std::array<std::array<U32, 25>, 25> sideCards;
+	// [from][to]: unmoveSplit(sideCards[from][to]).
+	std::array<std::array<U64, 25>, 25> unmoveSideCards;
 };
 
 template<bool invert>
@@ -265,6 +300,9 @@ constexpr auto generateMoveBoardSet(const CardSet& cards) {
 				if (set.moveBoards[i][from] & (1U << to))
 					set.sideCards[from][to] |= SIDE_CARD_MASK[i];
 	}
+	for (U64 from = 0; from < 25; from++)
+		for (U64 to = 0; to < 25; to++)
+			set.unmoveSideCards[from][to] = unmoveSplit(set.sideCards[from][to]);
 	for (U32 subset = 0; subset < 32; subset++)
 		for (U32 i = 0; i < 5; i++)
 			if (subset & (1U << i))
