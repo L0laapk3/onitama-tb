@@ -15,7 +15,8 @@ struct TableBase;
 
 struct ThreadObj {
 	Sync sync;
-	U64 iteration = 1;
+	U64 iteration = 0;
+	bool exit = false;
 	std::size_t group = 0; // index into PIECE_COUNT_ORDER
 	std::atomic<bool> updated = true;
 };
@@ -30,7 +31,7 @@ __FORCE_INLINE U32 fetch_mask(std::atomic<U32>& entry, U32 mask, std::memory_ord
 	return value & ~mask;
 }
 
-// STEP 1: no TableBase lookups, just check win in 0/invalid boards & win in 1.
+// STEP 1: no TableBase lookups in the forward movegen, it checks the children for win in 0/1 directly.
 // STEP 2: TableBase lookups.
 template <U16 TB_MEN, U16 P0C, U16 P1C, int STEP>
 void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U64& rowStartChunk, std::atomic<U64>& chunkCounter, bool& updated) {
@@ -79,29 +80,10 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 				U32 unresolvedUnion = 0;
 
 				{ // Optimization: If the entire block of king perms is empty, continue early
-					auto* cardsEntry = it;
-					auto entryIt = entries.begin(); // every entry has to be read: STEP 1 initializes them, the forward movegen uses them
-					for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
-						auto& rowK0 = rowP1[ik0];
-						const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
-						for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, entryIt++, cardsEntry++) {
-							if constexpr (STEP == 1) {
-								const U32 bbk1 = unrankSecondKing<false, P0C, P1C>(ik1, bbp1);
-								Board board{ bbp0, bbp1, bbk0, bbk1 };
-								// Other threads may already have reverse marked bits of this entry as win in 3: clear with RMWs to keep those marks.
-								if (board.isTempleEnded()) { // Win in 0
-									cardsEntry->store(0, std::memory_order_relaxed);
-									*entryIt = 0; // Win in 0 - skip all the forwards and backwards movegen
-								} else {
-									const U32 winInOneCards = board.getWinInOneCards<0>(cards.moveBoardsReverse);
-									*entryIt = fetch_mask(*cardsEntry, winInOneCards, std::memory_order_relaxed);
-								}
-							} else {
-								// loop over all entries, when a stored bit is 1 that means the entry is still unresolved.
-								*entryIt = cardsEntry->load(std::memory_order_relaxed);
-							}
-							unresolvedUnion |= *entryIt;
-						}
+					// every entry has to be read: the forward movegen uses them. A stored bit of 1 means that card perm is still unresolved.
+					for (int i = 0; i < P0C * P1C; i++) {
+						entries[i] = it[i].load(std::memory_order_relaxed);
+						unresolvedUnion |= entries[i];
 					}
 					if (!unresolvedUnion) {
 						unresolvedLandings = 0;
@@ -122,6 +104,39 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 					if constexpr (STEP == 1)
 						for (int ik0 = 0; ik0 < P0C; ik0++)
 							childTakeSplits[ik0] = unmoveSplit(Board::takeWinCards(unrankFirstKing<false, P0C, P1C>(ik0, bbp0), bbp1, cards.moveBoardsForward));
+
+					// STEP > 1: prefetch all children up front. unresolvedUnion only shrinks, so these landings are a superset of the ones evaluated below.
+					std::array<U32, P0C> prefetchedLandings;
+					std::array<const std::atomic<U32>*, P0C * (25 - P0C)> childRows; // flat king blocks, rows of P0C, per source then landing
+					std::array<U8, P0C> childRowsStart;
+					if constexpr (STEP > 1) {
+						auto childIt = childRows.begin();
+						U32 sourcePieces = bbp0;
+						for (int iSrc = 0; iSrc < P0C; iSrc++) {
+							const U32 sourcePiece = sourcePieces & -sourcePieces;
+							const int pp = std::countr_zero(sourcePieces);
+							sourcePieces &= sourcePieces - 1;
+							childRowsStart[iSrc] = static_cast<U8>(childIt - childRows.begin());
+							U32 landPieces = moveBoardFromCardEntry(cards.moveBoardsForward.moveBoards, unresolvedUnion, pp) & unresolvedLandings & ~bbp0;
+							prefetchedLandings[iSrc] = landPieces;
+							while (landPieces) {
+								const U32 landPiece = landPieces & -landPieces;
+								landPieces &= landPieces - 1;
+								const U32 bbp0_new = (bbp0 - sourcePiece) | landPiece;
+								const std::atomic<U32>* childRow;
+								if constexpr (P1C > 1) {
+									if (landPiece & bbp1) {
+										const int iTaken = std::popcount(bbp1 & (landPiece - 1));
+										childRow = &tb.template getRow<P1C - 1, P0C>()[ip0s_taken[iTaken]][rankSecondPieces<true, P1C - 1, P0C>(bbp0_new, bbp1 & ~landPiece)][0][0];
+									} else
+										childRow = &tb.template getRow<P1C, P0C>()[ip0_new][rankSecondPieces<true, P1C, P0C>(bbp0_new, bbp1)][0][0];
+								} else
+									childRow = &tb.template getRow<P1C, P0C>()[ip0_new][rankSecondPieces<true, P1C, P0C>(bbp0_new, bbp1)][0][0];
+								__builtin_prefetch(childRow, 0, 3);
+								*childIt++ = childRow;
+							}
+						}
+					}
 
 					U32 sourcePieces = bbp0;
 					for (int iSrc = 0; iSrc < P0C; iSrc++) {
@@ -172,20 +187,17 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 							} else {
 								const bool isTakeMove = landPiece & bbp1;
 								const int landRankInv = std::popcount(bbp0_without_source & -landPiece);
+								const std::atomic<U32>* childRow = childRows[childRowsStart[iSrc] + std::popcount(prefetchedLandings[iSrc] & (landPiece - 1))];
 								std::array<U32, P0C * P1C> otherEntry; // unresolved bits of the child
 								auto otherIt = otherEntry.begin();
 								if (!isTakeMove) {
-									const int ip1_new = rankSecondPieces<true, P1C, P0C>(bbp0_new, bbp1);
-									const auto& pawnRow_new = tb.template getRow<P1C, P0C>()[ip0_new][ip1_new];
-									__builtin_prefetch(pawnRow_new.data(), 0, 0);
-
 									for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 										auto& rowK0 = rowP1[ik0];
 										const int ik0_inv = invertKingRank<P0C>(ik0) + (iSrc < ik0); // the source piece leaving from below shifts the inverted king up
 										const U32 ik1_new = iSrc == ik0 ? landRankInv : ik0_inv - (landRankInv >= ik0_inv); // landing below the king shifts it down
 										for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, otherIt++) {
 											const U32 ik0_new = invertKingRank<P1C>(ik1);
-											*otherIt = pawnRow_new[ik0_new][ik1_new].load(std::memory_order_acquire);
+											*otherIt = childRow[ik0_new * P0C + ik1_new].load(std::memory_order_acquire);
 										}
 									}
 
@@ -193,13 +205,7 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 									if constexpr (P1C == 1) {
 										std::unreachable();
 									} else {
-										const U32 bbp1_taken = bbp1 & ~landPiece;
 										const int iTaken = std::popcount(bbp1 & (landPiece - 1));
-										const int ip0_taken = ip0s_taken[iTaken];
-										const int ip1_taken = rankSecondPieces<true, P1C - 1, P0C>(bbp0_new, bbp1_taken);
-										const auto& pawnrow_taken = tb.template getRow<P1C - 1, P0C>()[ip0_taken][ip1_taken];
-										__builtin_prefetch(pawnrow_taken.data(), 0, 0);
-
 										for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 											auto& rowK0 = rowP1[ik0];
 											const int ik0_inv = invertKingRank<P0C>(ik0) + (iSrc < ik0); // the source piece leaving from below shifts the inverted king up
@@ -210,7 +216,7 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 													continue;
 												}
 												const U32 ik0_taken = invertKingRank<P1C>(ik1) - (ik1 < iTaken); // the taken piece shifts the king down if above it
-												*otherIt = pawnrow_taken[ik0_taken][ik1_taken].load(std::memory_order_acquire);
+												*otherIt = childRow[ik0_taken * P0C + ik1_taken].load(std::memory_order_acquire);
 											}
 										}
 									}
@@ -340,6 +346,60 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 	rowStartChunk += P0_CHUNKS;
 }
 
+// Writes win in 0 and win in 1 into every entry of the row. This is also the first touch of the row.
+template <U16 P0C, U16 P1C>
+void prefillRow(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk, std::atomic<U64>& chunkCounter) {
+	auto& row = tb.template getRow<P0C, P1C>();
+	constexpr U32 OUTER_SIZE = PAWNTABLE_P0<P0C, P1C>.size();
+	constexpr U32 INNER_SIZE = PAWNTABLE_P1<P0C, P1C>.size();
+
+	for (; chunk < rowStartChunk + OUTER_SIZE; chunk = chunkCounter++) {
+		const int ip0 = static_cast<int>(chunk - rowStartChunk);
+		const U32 bbp0 = unrankFirstPieces<false, P0C, P1C>(ip0);
+
+		// Per square of p1's king: the cards with which p0 takes it. p1's king on its temple is win in 0, which clears every bit.
+		std::array<U32, 25> takeCards{};
+		for (int i = 0; i < 5; i++) {
+			U32 attacked = 0;
+			for (U32 pieces = bbp0; pieces; pieces &= pieces - 1)
+				attacked |= cards.moveBoardsForward.moveBoards[i][std::countr_zero(pieces)];
+			for (; attacked; attacked &= attacked - 1)
+				takeCards[std::countr_zero(attacked)] |= P_HAS_CARD_IN_MASK<0>[i];
+		}
+		takeCards[PTEMPLE[1]] = CARD_PERMS_MASK;
+
+		const bool templeFree = !(bbp0 & (1U << PTEMPLE[0]));
+		std::array<U32, P0C> k0Masks;
+		U32 kings0 = bbp0;
+		for (int ik0 = 0; ik0 < P0C; ik0++, kings0 &= kings0 - 1) {
+			const U32 bbk0 = kings0 & -kings0;
+			k0Masks[ik0] = Board::isPlayerTempleEnded<0>(bbk0) ? 0 : CARD_PERMS_MASK & ~(templeFree ? Board::templeKingCards<0>(bbk0, cards.moveBoardsReverse) : 0);
+		}
+
+		auto* it = &row[ip0][0][0][0];
+		for (int ip1 = 0; ip1 < static_cast<int>(INNER_SIZE); ip1++) {
+			std::array<U32, P1C> k1Masks;
+			U32 kings1 = unrankSecondPieces<false, P0C, P1C>(ip1, bbp0);
+			for (int ik1 = 0; ik1 < P1C; ik1++, kings1 &= kings1 - 1)
+				k1Masks[ik1] = ~takeCards[std::countr_zero(kings1)];
+			for (int ik0 = 0; ik0 < P0C; ik0++)
+				for (int ik1 = 0; ik1 < P1C; ik1++)
+					(it++)->store(k0Masks[ik0] & k1Masks[ik1], std::memory_order_relaxed);
+		}
+	}
+	rowStartChunk += OUTER_SIZE;
+}
+
+// STEP 0 prefills every row before anything can reverse mark it: the rows of p1c == 1 of the group itself, which nothing
+// else marks, and the rows its reverse movegen untakes into, which belong to the next piece count sum.
+template <U16 TB_MEN, U16 P0C, U16 P1C>
+void prefillRowsOf(const CardsInfo& cards, auto& tb, U64& chunk, U64& rowStartChunk, std::atomic<U64>& chunkCounter) {
+	if constexpr (P1C == 1)
+		prefillRow<P0C, P1C>(cards, tb, chunk, rowStartChunk, chunkCounter);
+	if constexpr (P0C < TB_MEN / 2)
+		prefillRow<P1C, P0C + 1>(cards, tb, chunk, rowStartChunk, chunkCounter);
+}
+
 template <U16 TB_MEN, int STEP, typename Storage, typename Landings>
 void singleDepthPass(const CardsInfo& cards, Storage& tb, Landings& landings, std::size_t group, std::atomic<U64>& chunkCounter, bool& updated) {
 	U64 chunk = chunkCounter++;
@@ -349,15 +409,31 @@ void singleDepthPass(const CardsInfo& cards, Storage& tb, Landings& landings, st
 		([&]<U16 P0C, U16 P1C> {
 			if (I != group)
 				return;
-			processRow<TB_MEN, P0C, P1C, STEP>(cards, tb, landings, chunk, rowStartChunk, chunkCounter, updated);
-			if constexpr (P0C != P1C)
-				processRow<TB_MEN, P1C, P0C, STEP>(cards, tb, landings, chunk, rowStartChunk, chunkCounter, updated);
+			if constexpr (STEP == 0) {
+				prefillRowsOf<TB_MEN, P0C, P1C>(cards, tb, chunk, rowStartChunk, chunkCounter);
+				if constexpr (P0C != P1C)
+					prefillRowsOf<TB_MEN, P1C, P0C>(cards, tb, chunk, rowStartChunk, chunkCounter);
+				updated = true;
+			} else {
+				processRow<TB_MEN, P0C, P1C, STEP>(cards, tb, landings, chunk, rowStartChunk, chunkCounter, updated);
+				if constexpr (P0C != P1C)
+					processRow<TB_MEN, P1C, P0C, STEP>(cards, tb, landings, chunk, rowStartChunk, chunkCounter, updated);
+			}
 		}.template operator()<PIECE_COUNT_ORDER<TB_MEN>[I].p0c, PIECE_COUNT_ORDER<TB_MEN>[I].p1c>(), ...);
 	}(std::make_index_sequence<PIECE_COUNT_ORDER<TB_MEN>.size()>{});
 }
 
-template <typename Storage>
-U64 countUnresolved(const Storage& tb) {
+template <U16 TB_MEN>
+constexpr std::size_t groupOfRow(U16 p0c, U16 p1c) {
+	for (std::size_t i = 0; i < PIECE_COUNT_ORDER<TB_MEN>.size(); i++)
+		if (PIECE_COUNT_ORDER<TB_MEN>[i].p0c == std::min(p0c, p1c) && PIECE_COUNT_ORDER<TB_MEN>[i].p1c == std::max(p0c, p1c))
+			return i;
+	throw "row not in any group";
+}
+
+// Rows of groups after lastGroup may not be prefilled yet, they count as fully unresolved.
+template <U16 TB_MEN, typename Storage>
+U64 countUnresolved(const Storage& tb, std::size_t lastGroup) {
 	// Only called while the workers are idle, so the entries are read as plain U64 words.
 	constexpr U64 CHUNK_WORDS = 1 << 16;
 	std::vector<std::span<const U64>> chunks;
@@ -365,6 +441,10 @@ U64 countUnresolved(const Storage& tb) {
 	tb.forEachRow([&]<U16 P0C, U16 P1C> {
 		const auto& row = tb.template getRow<P0C, P1C>();
 		const U64 entries = row.size() * sizeof(row[0]) / sizeof(U32);
+		if (groupOfRow<TB_MEN>(P0C, P1C) > lastGroup) {
+			tailCount += entries * 30;
+			return;
+		}
 		const U64* words = reinterpret_cast<const U64*>(row.data());
 		for (U64 i = 0; i < entries / 2; i += CHUNK_WORDS)
 			chunks.emplace_back(words + i, std::min(CHUNK_WORDS, entries / 2 - i));
@@ -401,11 +481,13 @@ template <U16 TB_MEN, typename Storage, typename Landings>
 void singleThread(const CardsInfo& cards, Storage& tb, Landings& landings, std::atomic<U64>& chunkCounter, ThreadObj& comm) {
 	while (true) {
 		comm.sync.slaveNotifyWait();
-		if (comm.iteration == 0)
+		if (comm.exit)
 			break;
 
 		bool updated = false;
-		if (comm.iteration == 1)
+		if (comm.iteration == 0)
+			singleDepthPass<TB_MEN, 0>(cards, tb, landings, comm.group, chunkCounter, updated);
+		else if (comm.iteration == 1)
 			singleDepthPass<TB_MEN, 1>(cards, tb, landings, comm.group, chunkCounter, updated);
 		else
 			singleDepthPass<TB_MEN, 2>(cards, tb, landings, comm.group, chunkCounter, updated);
@@ -435,7 +517,7 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, 
 	// Takes only lead to groups earlier in PIECE_COUNT_ORDER, so each group is solved completely before the next one.
 	for (std::size_t group = 0; group < PIECE_COUNT_ORDER<TB_MEN>.size(); group++) {
 		comm.group = group;
-		comm.iteration = 1;
+		comm.iteration = 0;
 		comm.updated = true;
 		std::cout << std::format("{}v{}", PIECE_COUNT_ORDER<TB_MEN>[group].p0c, PIECE_COUNT_ORDER<TB_MEN>[group].p1c);
 		if constexpr (VERBOSE)
@@ -454,7 +536,7 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, 
 			groupTime += iterationTime;
 
 			if constexpr (VERBOSE) {
-				const U64 count = total - countUnresolved(tb);
+				const U64 count = total - countUnresolved<TB_MEN>(tb, group);
 				newResolvedStates = count - resolvedStates;
 				resolvedStates = count;
 				if (iterationTime.count() > .03 || newResolvedStates == 0)
@@ -473,7 +555,7 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, 
 
 	if constexpr (!VERBOSE) {
 		const auto countingStart = std::chrono::steady_clock::now();
-		resolvedStates = total - countUnresolved(tb);
+		resolvedStates = total - countUnresolved<TB_MEN>(tb, PIECE_COUNT_ORDER<TB_MEN>.size() - 1);
 		countingTime += std::chrono::steady_clock::now() - countingStart;
 	}
 	if constexpr (VERBOSE)
@@ -484,7 +566,7 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, 
 		throw std::runtime_error("wrong number of boards");
 	}
 
-	comm.iteration = 0;
+	comm.exit = true;
 	comm.sync.masterNotify(numThreads);
 	for (auto& thread : threads)
 		thread.join();
@@ -510,7 +592,7 @@ struct TableBase {
 	template <U16 P0C, U16 P1C>
 	struct alignas(64) LandingsRow : std::array<std::array<U32, PAWNTABLE_P1<P1C, P0C>.size()>, PAWNTABLE_P0<P1C, P0C>.size()> {};
 
-	// One tuple of ROW<P0C, P1C> per piece count, in huge pages. Left uninitialized unless a fill value is given.
+	// One tuple of ROW<P0C, P1C> per piece count, in huge pages. Left uninitialized.
 	template <template <U16, U16> typename ROW>
 	struct RowTuple {
 		template <std::size_t... I>
@@ -520,11 +602,8 @@ struct TableBase {
 		};
 
 		RowTuple() {}
-		explicit RowTuple(U32 fill) {
-			std::fill_n(reinterpret_cast<U32*>(&rows), sizeof(rows) / sizeof(U32), fill);
-		}
 
-		// madvise has to happen before the first touch, which is the fill or the first pass of the build.
+		// madvise has to happen before the first touch, which is the prefill or the first pass of the build.
 		static void* operator new(std::size_t size) {
 			constexpr std::size_t HUGE_PAGE = 2 << 20;
 			const std::size_t rounded = (size + HUGE_PAGE - 1) / HUGE_PAGE * HUGE_PAGE;
@@ -554,7 +633,7 @@ struct TableBase {
 
 	explicit TableBase(const CardsInfo& cards, U64 stopAtIteration = std::numeric_limits<U64>::max()) {
 		const auto allocStart = std::chrono::steady_clock::now();
-		tb = std::make_unique<Storage>(CARD_PERMS_MASK);
+		tb = std::make_unique<Storage>();
 		auto landings = std::make_unique<Landings>(); // STEP 1 writes every entry
 		const std::chrono::duration<double> allocTime = std::chrono::steady_clock::now() - allocStart;
 		std::cout << std::format("allocated {:.1f}GB + {:.1f}GB in {:.2f}s\n", sizeof(Storage) / 1e9, sizeof(Landings) / 1e9, allocTime.count());
