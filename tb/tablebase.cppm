@@ -66,6 +66,11 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 				auto& rowP1 = row[rankFirstPieces<false, P0C, P1C>(bbp0)][rankSecondPieces<false, P0C, P1C>(bbp1, bbp0)];
 				auto* it = &rowP1[0][0];
 				__builtin_prefetch(it, 1, 3);
+				if (ipInner + 3 < static_cast<int>(INNER_SIZE)) {
+					const U32 bbp0Next = unrankSecondPieces<true, P1C, P0C>(ipInner + 3, bbp1);
+					auto& rowP1Next = row[rankFirstPieces<false, P0C, P1C>(bbp0Next)][rankSecondPieces<false, P0C, P1C>(bbp1, bbp0Next)];
+					__builtin_prefetch(&rowP1Next[0][0], 1, 3);
+				}
 				std::array<U32, P0C * P1C> entries;
 				U32 unresolvedUnion = 0;
 
@@ -456,7 +461,7 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, 
 	}
 	if constexpr (VERBOSE)
 		std::cout << "\n";
-	std::cout << std::format("total {}-men: {} states in {:.2f}s (+{:.2f}s counting)\n", TB_MEN, resolvedStates, totalTime.count(), countingTime.count());
+	std::cout << std::format("total {}-men: {} states in {:.2f}s (+{:.2f}s counting)\n\n", TB_MEN, resolvedStates, totalTime.count(), countingTime.count());
 	if (resolvedStates != EXPECTED_RESOLVED_STATES) {
 		std::cerr << "ERROR: WRONG NUMBER OF RESOLVED BOARDS (got " << resolvedStates << ", expected " << EXPECTED_RESOLVED_STATES << ")\n";
 		throw std::runtime_error("wrong number of boards");
