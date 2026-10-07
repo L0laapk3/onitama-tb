@@ -57,10 +57,10 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 					ip0s_taken[i] = rankFirstPieces<true, P1C - 1, P0C>(bbp1 - pp1);
 				}
 			}
-			std::array<U32, P1C> childTempleCards; // per ik1: the child's temple win cards, if p1's temple is free
+			std::array<U64, P1C> childTempleSplits; // per ik1: unmoveSplit of the child's temple win cards, if p1's temple is free
 			if constexpr (STEP == 1)
 				for (int ik1 = 0; ik1 < P1C; ik1++)
-					childTempleCards[ik1] = Board::templeKingCards<1>(unrankSecondKing<false, P0C, P1C>(ik1, bbp1), cards.moveBoardsForward);
+					childTempleSplits[ik1] = unmoveSplit(Board::templeKingCards<1>(unrankSecondKing<false, P0C, P1C>(ik1, bbp1), cards.moveBoardsForward));
 			auto* landingsIt = landingsRow[ip0_new].data();
 			for (int ipInner = 0; ipInner < static_cast<int>(INNER_SIZE); ipInner++, landingsIt++) {
 				U32& unresolvedLandings = *landingsIt;
@@ -114,10 +114,10 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 				U32 newUnresolvedLandings = 0;
 				// From here on, entries only keeps the unresolved card perms that have no move to an unresolved child yet.
 				{ // forwards movegen - check if all possible p0 moves are resolved
-					std::array<U32, P0C> childTakeCards; // per ik0: the child's take win cards when neither the king moves nor a piece is taken
+					std::array<U64, P0C> childTakeSplits; // per ik0: unmoveSplit of the child's take win cards when neither the king moves nor a piece is taken
 					if constexpr (STEP == 1)
 						for (int ik0 = 0; ik0 < P0C; ik0++)
-							childTakeCards[ik0] = Board::takeWinCards(unrankFirstKing<false, P0C, P1C>(ik0, bbp0), bbp1, cards.moveBoardsForward);
+							childTakeSplits[ik0] = unmoveSplit(Board::takeWinCards(unrankFirstKing<false, P0C, P1C>(ik0, bbp0), bbp1, cards.moveBoardsForward));
 
 					U32 sourcePieces = bbp0;
 					for (int iSrc = 0; iSrc < P0C; iSrc++) {
@@ -138,14 +138,15 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 							if constexpr (STEP == 1) {
 								const U32 bbp1_new = bbp1 & ~landPiece;
 								const bool isTakeMove = landPiece & bbp1;
-								const U32 templeMask = bbp1_new & (1U << PTEMPLE[1]) ? 0 : ~0U;
+								const U64 templeMask = bbp1_new & (1U << PTEMPLE[1]) ? 0 : ~0ULL;
+								const U64 sideSplit = cards.moveBoardsForward.unmoveSideCards[pp][std::countr_zero(landPiece)];
 								auto entryIt = entries.begin();
 								auto startEntryIt = startEntries.begin();
 								for (int ik0 = 0; ik0 < static_cast<int>(rowP1.size()); ik0++) {
 									auto& rowK0 = rowP1[ik0];
 									const U32 bbk0 = unrankFirstKing<false, P0C, P1C>(ik0, bbp0);
 									const U32 bbk0_new = sourcePiece == bbk0 ? landPiece : bbk0;
-									const U32 takeCards = sourcePiece == bbk0 || isTakeMove ? Board::takeWinCards(bbk0_new, bbp1_new, cards.moveBoardsForward) : childTakeCards[ik0];
+									const U64 takeSplit = sourcePiece == bbk0 || isTakeMove ? unmoveSplit(Board::takeWinCards(bbk0_new, bbp1_new, cards.moveBoardsForward)) : childTakeSplits[ik0];
 									for (int ik1 = 0; ik1 < static_cast<int>(rowK0.size()); ik1++, entryIt++, startEntryIt++) {
 										if (!*entryIt) { // no perm left that this move could help: resolved (e.g. win in 0), already has a move to an unresolved child, or lacks the cards
 											if (*startEntryIt)
@@ -156,8 +157,8 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 										if (landPiece == bbk1) // King takes are obviously resolved
 											continue;
 
-										const U32 unresolvedChild = ~(takeCards | (childTempleCards[ik1] & templeMask));
-										const U32 helped = unmoveCardEntry(unresolvedChild & cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)]);
+										// unmoveSplit permutes the card perm bits, so it commutes with | and with ~ under sideSplit.
+										const U32 helped = unmoveJoin(~(takeSplit | (childTempleSplits[ik1] & templeMask)) & sideSplit);
 										*entryIt &= ~helped;
 										if (helped & *startEntryIt)
 											newUnresolvedLandings |= landPiece;
