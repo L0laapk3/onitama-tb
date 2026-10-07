@@ -174,10 +174,17 @@ static_assert([] {
 }());
 
 // Given an input card entry with these bits, return the bits that are the result of any move (with either card)
-export __FORCE_INLINE constexpr U32 moveCardEntry(U32 after) {
-	// return swapPlayers(otherSideCards(after));
-	return after; // TODO
+// unmoveCardEntry(a) & b != 0 exactly when a & moveCardEntry(b) != 0.
+export __FORCE_INLINE constexpr U32 moveCardEntry(U32 before) {
+	return otherSideCards(swapPlayers(before));
 }
+static_assert([] {
+	for (int a = 0; a < 30; a++)
+		for (int b = 0; b < 30; b++)
+			if (((unmoveCardEntry(1U << a) & (1U << b)) != 0) != ((moveCardEntry(1U << b) & (1U << a)) != 0))
+				return false;
+	return true;
+}());
 
 U32 otherSideCards2(U32 bits) {
 	const U64 rotated = (U64(bits) << 10) | (U64(bits) << 20);

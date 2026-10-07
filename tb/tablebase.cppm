@@ -111,6 +111,10 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 
 				const std::array<U32, P0C * P1C> startEntries = entries;
 				const U32 startUnion = unresolvedUnion;
+				std::array<U32, P0C * P1C> startEntriesMoved; // child card perms that help a start entry
+				if constexpr (STEP > 1)
+					for (int i = 0; i < P0C * P1C; i++)
+						startEntriesMoved[i] = moveCardEntry(startEntries[i]);
 				U32 newUnresolvedLandings = 0;
 				// From here on, entries only keeps the unresolved card perms that have no move to an unresolved child yet.
 				{ // forwards movegen - check if all possible p0 moves are resolved
@@ -130,6 +134,7 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 						if constexpr (STEP > 1)
 							landPieces &= unresolvedLandings;
 						landPieces &= ~bbp0; // lookup unresolved landings & can't land on my own pieces
+						std::array<U32, P0C * P1C> childHelpers{}; // unresolved child card perms of this source's moves, unmoved once after the landings loop
 						while (landPieces) {
 							const U32 landPiece = landPieces & -landPieces;
 							landPieces &= landPieces - 1;
@@ -211,19 +216,22 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 									}
 								}
 
-								unresolvedUnion = 0;
+								const U32 sideCards = cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)];
+								U32 startHelpers = 0;
 								for (int i = 0; i < P0C * P1C; i++) {
-									const U32 helped = unmoveCardEntry(otherEntry[i] & cards.moveBoardsForward.sideCards[pp][std::countr_zero(landPiece)]);
-									entries[i] &= ~helped;
-									unresolvedUnion |= entries[i];
-									if (helped & startEntries[i])
-										newUnresolvedLandings |= landPiece;
+									const U32 helpers = otherEntry[i] & sideCards;
+									childHelpers[i] |= helpers;
+									startHelpers |= helpers & startEntriesMoved[i];
 								}
-								if (!unresolvedUnion) {
-									// The remaining moves are not evaluated, they may still help the start entries. The card filter marks the next sources.
-									newUnresolvedLandings |= landPieces;
-									break;
-								}
+								if (startHelpers)
+									newUnresolvedLandings |= landPiece;
+							}
+						}
+						if constexpr (STEP > 1) {
+							unresolvedUnion = 0;
+							for (int i = 0; i < P0C * P1C; i++) {
+								entries[i] &= ~unmoveCardEntry(childHelpers[i]);
+								unresolvedUnion |= entries[i];
 							}
 						}
 					}
