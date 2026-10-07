@@ -57,15 +57,30 @@ export struct Board {
 		return isTakeWinInOne<player>(reverseMoveBoard);
 	}
 
+	// Cards with which pieces bbp can take the king bbk.
+	static constexpr U32 takeWinCards(U32 bbk, U32 bbp, const MoveBoardSet& reverseMoveBoards) {
+		U32 winCards = 0;
+		for (int i = 0; i < 5; i++)
+			if (isKingAttackedBy(bbk, bbp, reverseMoveBoards.moveBoards[i]))
+				winCards |= P_HAS_CARD_IN_MASK<0>[i];
+		return winCards;
+	}
+
+	// Cards with which `player`'s king bbk reaches its temple, ignoring whether the temple is free.
+	template <bool player>
+	static constexpr U32 templeKingCards(U32 bbk, const MoveBoardSet& reverseMoveBoards) {
+		U32 winCards = 0;
+		for (int i = 0; i < 5; i++)
+			if (reverseMoveBoards.moveBoards[i][PTEMPLE[player]] & bbk)
+				winCards |= P_HAS_CARD_IN_MASK<0>[i];
+		return winCards;
+	}
+
 	// Entry bits are from the mover's perspective, so `player` holds playerCards[0].
 	template <bool player>
 	constexpr U32 getWinInOneCards(const MoveBoardSet& reverseMoveBoards) const {
-		U32 winCards = 0;
-		for (int i = 0; i < 5; i++) {
-			if (isWinInOne<player>(reverseMoveBoards.moveBoards[i]))
-				winCards |= P_HAS_CARD_IN_MASK<0>[i];
-		}
-		return winCards;
+		const U32 templeCards = isTempleFree<player>() ? templeKingCards<player>(bbk[player], reverseMoveBoards) : 0;
+		return templeCards | takeWinCards(bbk[!player], bbp[player], reverseMoveBoards);
 	};
 
 	// debug utils
