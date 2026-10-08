@@ -6,10 +6,10 @@ per-entry loops is the hot path, so prefer constexpr lookup tables over runtime 
 ## Build / run
 
 ```bash
-bazel run //tb   # optimized; this is how the generator is normally run
+bazel run //tb 6 # optimized; this is how the generator is normally run
 bazel run //tb 8 # Larger tablebase size for benchmarking
-bazel run //tb --config=symbols
-bazel run //tb --config=dbg
+bazel run //tb 6 --config=symbols
+bazel run //tb 6 --config=dbg
 ```
 The real tablebase is 10 large, but this is too large for reasonable testing and does not fit in host computer memory.
 

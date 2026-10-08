@@ -497,7 +497,8 @@ void singleThread(const CardsInfo& cards, Storage& tb, Landings& landings, std::
 }
 
 template <U16 TB_MEN, typename Storage, typename Landings>
-void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, U64 stopAtIteration, std::chrono::steady_clock::time_point startTime) {
+void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, U64 stopAtIteration) {
+	const auto startTime = std::chrono::steady_clock::now();
 	// 30 card perms. 47 perms with kings on their temple. times all combinations of zero to 2 pawns on each side
 	// constexpr U64 EXPECTED_WIN_IN_ZERO = 30 * 47 * (1 + 23 + 23*22/2 + 23 * (1 + 22 + 22*21/2) + 23*22/2 * (1 + 21 + 21*20/2));
 	constexpr U64 EXPECTED_RESOLVED_STATES = TB_MEN == 6 ? 1166580494ULL : 50958224689ULL;
@@ -560,7 +561,7 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, 
 	}
 	if constexpr (VERBOSE)
 		std::cout << "\n";
-	std::cout << std::format("total {}-men: {} states in {:.2f}s (+{:.2f}s counting)\n\n", TB_MEN, resolvedStates, totalTime.count(), countingTime.count());
+	std::cout << std::format("total {}-men: {} states ({:.4f}%) in {:.2f}s (+{:.2f}s counting)\n\n", TB_MEN, resolvedStates, 100.0 * resolvedStates / total, totalTime.count(), countingTime.count());
 	if (resolvedStates != EXPECTED_RESOLVED_STATES) {
 		std::cerr << "ERROR: WRONG NUMBER OF RESOLVED BOARDS (got " << resolvedStates << ", expected " << EXPECTED_RESOLVED_STATES << ")\n";
 		throw std::runtime_error("wrong number of boards");
@@ -632,13 +633,12 @@ struct TableBase {
 	using Landings = RowTuple<LandingsRow>; // only needed during the build
 
 	explicit TableBase(const CardsInfo& cards, U64 stopAtIteration = std::numeric_limits<U64>::max()) {
-		const auto allocStart = std::chrono::steady_clock::now();
 		tb = std::make_unique<Storage>();
 		auto landings = std::make_unique<Landings>(); // STEP 1 writes every entry
-		const std::chrono::duration<double> allocTime = std::chrono::steady_clock::now() - allocStart;
-		std::cout << std::format("allocated {:.1f}GB + {:.1f}GB in {:.2f}s\n", sizeof(Storage) / 1e9, sizeof(Landings) / 1e9, allocTime.count());
 
-		runTableBaseBuild<TB_MEN>(cards, *tb, *landings, stopAtIteration, allocStart);
+		std::cout << std::format("allocated {:.1f}GB + {:.1f}GB\n", sizeof(Storage) / 1e9, sizeof(Landings) / 1e9);
+
+		runTableBaseBuild<TB_MEN>(cards, *tb, *landings, stopAtIteration);
 	}
 
 	std::unique_ptr<Storage> tb;
