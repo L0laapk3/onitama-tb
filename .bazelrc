@@ -36,10 +36,8 @@ build --copt=-O3 --copt=-ffast-math --copt=-flto --linkopt=-flto
 build --copt=-DNDEBUG
 build --strip=always
 
-build:turin --cxxopt=-march=znver5
-build:turin --linkopt=-static
-build:emerald --cxxopt=-march=emeraldrapids
-build:emerald --linkopt=-static
+build:znver5  --linkopt=-static --cxxopt=-march=znver5
+build:emerald --linkopt=-static --cxxopt=-march=emeraldrapids
 
 build:symbols --copt=-g --strip=never
 
