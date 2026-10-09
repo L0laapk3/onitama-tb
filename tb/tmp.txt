@@ -1,7 +1,0 @@
-Please design a bot that can solve any position of onitama.
-You're going to do so using negamax with all kinds of search techniques.
-Your aiming to strongly solve onitama, finding the shortest path to victory from any state. therefore you should refrain from using techniques that weaken the proof, such as variable depth searching.
-
-To aid with this, i'm providing you with a draw table base of every draw in the entire game state space for a set of cards (eventually, the cards should be an input in some way but its OK to hardcode them for now). I'll also be sharing with you the files that generated them under the onitama-tb workspace, they may also give you some clues on efficient board representations, how to efficiently do move generation, etc.
-
-Please note that this draw table base contains *every* possible draw. This also means we can extract more information than just the draws from this table base: if a state is not a draw, and one player has the option of turning it into a draw, that means that state must be a forced win for the player.
