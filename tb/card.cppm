@@ -257,6 +257,33 @@ export __FORCE_INLINE constexpr U32 moveBoardFromCardEntry(const std::array<Move
 	return result;
 }
 
+// Card perms in which the mover's pieces bbp have no legal move, so the mover has to pass.
+export __FORCE_INLINE constexpr U32 passPerms(const std::array<MoveBoard, 5>& moveBoards, U32 bbp) {
+	U32 movablePerms = 0;
+	for (int i = 0; i < 5; i++)
+		for (U32 pieces = bbp; pieces; pieces &= pieces - 1)
+			if (moveBoards[i][std::countr_zero(pieces)] & ~bbp) {
+				movablePerms |= P_HAS_CARD_IN_MASK<0>[i];
+				break;
+			}
+	return CARD_PERMS_MASK & ~movablePerms;
+}
+
+// Bit k: some placement of k pieces gets stuck with some hand.
+constexpr U32 generatePassPieceCounts(const std::array<MoveBoard, 5>& moveBoards) {
+	U32 counts = 0;
+	for (U32 k = 1; k <= 5; k++)
+		for (U32 bb = (1U << k) - 1; bb < 1U << 25;) {
+			if (passPerms(moveBoards, bb)) {
+				counts |= 1U << k;
+				break;
+			}
+			const U32 t = bb | (bb - 1);
+			bb = (t + 1) | (((~t & (t + 1)) - 1) >> (std::countr_zero(bb) + 1));
+		}
+	return counts;
+}
+
 template<bool invert>
 constexpr auto generateMoveBoard(const U32 card) {
 	constexpr std::array<U32, 5> shiftMasks{
@@ -321,4 +348,5 @@ export struct CardsInfo {
 	CardSet cards;
 	MoveBoardSet moveBoardsForward = generateMoveBoardSet<false>(cards);
 	MoveBoardSet moveBoardsReverse = generateMoveBoardSet<true>(cards);
+	U32 passPieceCounts = generatePassPieceCounts(moveBoardsForward.moveBoards);
 };

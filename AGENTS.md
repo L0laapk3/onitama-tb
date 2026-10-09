@@ -1,5 +1,7 @@
 # Notes for agents
 
+!!! AGENTS ARE NOT ALLOWED TO RUN ANY gcloud COMMANDS !!!
+
 Onitama endgame tablebase generator. C++26 modules, Bazel, Clang + libc++. Performance matters: code in the
 per-entry loops is the hot path, so prefer constexpr lookup tables over runtime work there.
 

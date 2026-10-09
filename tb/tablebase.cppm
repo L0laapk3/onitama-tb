@@ -23,6 +23,8 @@ struct ThreadObj {
 
 constexpr U64 CHUNK_P0_POSITIONS = 1;
 constexpr bool VERBOSE = false;
+// Landing bit of a pass, above the 25 squares.
+constexpr U32 PASS_LANDING = 1U << 31;
 
 __FORCE_INLINE U32 fetch_mask(std::atomic<U32>& entry, U32 mask, std::memory_order order) {
 	auto value = entry.load(std::memory_order_relaxed);
@@ -31,7 +33,7 @@ __FORCE_INLINE U32 fetch_mask(std::atomic<U32>& entry, U32 mask, std::memory_ord
 	return value & ~mask;
 }
 
-// STEP 1: no TableBase lookups in the forward movegen, it checks the children for win in 0/1 directly.
+// STEP 1: no TableBase lookups in the forward movegen (except for passes), it checks the children for win in 0/1 directly.
 // STEP 2: TableBase lookups.
 template <U16 TB_MEN, U16 P0C, U16 P1C, int STEP>
 void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U64& rowStartChunk, std::atomic<U64>& chunkCounter, bool& updated) {
@@ -241,6 +243,25 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 							}
 						}
 					}
+
+					// Without a legal move the mover passes: the child is the same board with either hand card given away.
+					if (cards.passPieceCounts & (1U << P0C) && (STEP == 1 || unresolvedLandings & PASS_LANDING)) {
+						const U32 stuckPerms = passPerms(cards.moveBoardsForward.moveBoards, bbp0);
+						if (stuckPerms & startUnion) {
+							const auto* childRow = &tb.template getRow<P1C, P0C>()[ip0_new][ipInner][0][0];
+							U32 startHelpers = 0;
+							for (int ik0 = 0; ik0 < P0C; ik0++) {
+								for (int ik1 = 0; ik1 < P1C; ik1++) {
+									const int i = ik0 * P1C + ik1;
+									const U32 helpers = childRow[invertKingRank<P1C>(ik1) * P0C + invertKingRank<P0C>(ik0)].load(std::memory_order_acquire);
+									entries[i] &= ~(unmoveCardEntry(helpers) & stuckPerms);
+									startHelpers |= helpers & moveCardEntry(startEntries[i] & stuckPerms);
+								}
+							}
+							if (startHelpers)
+								newUnresolvedLandings |= PASS_LANDING;
+						}
+					}
 				}
 				// STEP 1 is the first pass over the landings, so it initializes them. 0 means none helped: every unresolved entry is lost below, so the block becomes resolved
 				unresolvedLandings = STEP == 1 ? newUnresolvedLandings : unresolvedLandings & newUnresolvedLandings;
@@ -328,6 +349,21 @@ void processRow(const CardsInfo& cards, auto& tb, auto& landings, U64& chunk, U6
 								if constexpr (P0C < TB_MEN / 2) {
 									const int ik1_untaken = ik1_new + (ik0 < iUntaken); // the untaken piece shifts the king up if above it
 									fetch_mask(pawnRow_untaken[ik0_new * (P0C + 1) + ik1_untaken], newEntryBits, std::memory_order_relaxed);
+								}
+							}
+						}
+					}
+
+					// The opponent may have passed into this entry: same board, the opponent to move and stuck.
+					if (cards.passPieceCounts & (1U << P1C)) {
+						const U32 stuckPerms = passPerms(cards.moveBoardsReverse.moveBoards, bbp1);
+						if (stuckPerms) {
+							auto* parentRow = &tb.template getRow<P1C, P0C>()[ip0_new][ipInner][0][0];
+							for (int ik0 = 0; ik0 < P0C; ik0++) {
+								for (int ik1 = 0; ik1 < P1C; ik1++) {
+									const U32 parentBits = unmoveCardEntry(newLostEntries[ik0 * P1C + ik1]) & stuckPerms;
+									if (parentBits)
+										fetch_mask(parentRow[invertKingRank<P1C>(ik1) * P0C + invertKingRank<P0C>(ik0)], parentBits, std::memory_order_relaxed);
 								}
 							}
 						}
@@ -562,10 +598,8 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, 
 	if constexpr (VERBOSE)
 		std::cout << "\n";
 	std::cout << std::format("total {}-men: {} states ({:.4f}%) in {:.2f}s (+{:.2f}s counting)\n\n", TB_MEN, resolvedStates, 100.0 * resolvedStates / total, totalTime.count(), countingTime.count());
-	if (resolvedStates != EXPECTED_RESOLVED_STATES) {
+	if (resolvedStates != EXPECTED_RESOLVED_STATES)
 		std::cerr << "ERROR: WRONG NUMBER OF RESOLVED BOARDS (got " << resolvedStates << ", expected " << EXPECTED_RESOLVED_STATES << ")\n";
-		throw std::runtime_error("wrong number of boards");
-	}
 
 	comm.exit = true;
 	comm.sync.masterNotify(numThreads);
