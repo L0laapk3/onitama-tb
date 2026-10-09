@@ -6,3 +6,4 @@ export import :board;
 export import :index;
 export import :sync;
 export import :tablebase;
+export import :drawtable;

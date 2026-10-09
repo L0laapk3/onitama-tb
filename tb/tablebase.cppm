@@ -501,7 +501,7 @@ void runTableBaseBuild(const CardsInfo& cards, Storage& tb, Landings& landings, 
 	const auto startTime = std::chrono::steady_clock::now();
 	// 30 card perms. 47 perms with kings on their temple. times all combinations of zero to 2 pawns on each side
 	// constexpr U64 EXPECTED_WIN_IN_ZERO = 30 * 47 * (1 + 23 + 23*22/2 + 23 * (1 + 22 + 22*21/2) + 23*22/2 * (1 + 21 + 21*20/2));
-	constexpr U64 EXPECTED_RESOLVED_STATES = TB_MEN == 6 ? 1166580494ULL : 50958224689ULL;
+	constexpr U64 EXPECTED_RESOLVED_STATES = TB_MEN == 6 ? 1166580494ULL : TB_MEN == 8 ? 50958224689ULL : 1038519662776ULL;
 
 	std::atomic<U64> chunkCounter;
 	ThreadObj comm;
