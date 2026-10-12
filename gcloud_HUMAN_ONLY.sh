@@ -22,7 +22,7 @@ bazel build //tb --config=znver5
 # The braces make bash parse the whole script before running, so editing it mid-run is safe.
 {
 echo "[$(date +%T)] Creating VM tb-run"
-gcloud compute instances create tb-run --source-instance-template="$(gcloud compute instance-templates describe tb --region=europe-west2 --format='value(selfLink)')"
+gcloud compute instances create tb-run --source-instance-template="$(gcloud compute instance-templates describe znver5-96c-372gb --region=europe-west2 --format='value(selfLink)')"
 
 # Waits for sshd and pushes your gcloud SSH key to the VM.
 echo "[$(date +%T)] Waiting for SSH to come up"
