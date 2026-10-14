@@ -1,6 +1,6 @@
 build --repo_env=CC=clang-23
 build --action_env=CC=clang-23
-build --linkopt=-fuse-ld=lld-23
+build --linkopt=-fuse-ld=lld
 build --cxxopt='-std=c++26'
 build --cxxopt=-fcolor-diagnostics
 
